@@ -1,0 +1,26 @@
+# Ignore virtual environment
+bin/
+lib/
+pyvenv.cfg
+include/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Django database
+*.sqlite3
+
+# Logs
+*.log
+
+# Static and media files
+static/
+media/
+
+# IDE settings
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
