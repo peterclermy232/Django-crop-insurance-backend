@@ -1,17 +1,199 @@
-from django.shortcuts import render
-
-# Create your views here.
-# views.py
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.views import APIView
 from django.db.models import Q, Count, Sum
 from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import *
 from .serializers import *
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import authenticate
 
+
+# ============== AUTHENTICATION VIEWS ==============
+
+class LoginView(APIView):
+    """User login endpoint that returns JWT tokens"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        if not username or not password:
+            return Response(
+                {'error': 'Username and password are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Get user by email
+            user = User.objects.get(user_email=username)
+
+            # Check password
+            if user.check_password(password):
+                # Check if user is active
+                if user.user_status != 'ACTIVE':
+                    return Response(
+                        {'error': 'User account is inactive'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+
+                # Update last login
+                user.last_login = timezone.now()
+                user.save(update_fields=['last_login'])
+
+                return Response({
+                    'token': str(refresh.access_token),
+                    'refresh': str(refresh),
+                    'user': UserSerializer(user).data,
+                    'expires_in': 3600  # 1 hour in seconds
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {'error': 'Invalid credentials'},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'Invalid credentials'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Login failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class RegisterView(APIView):
+    """User registration endpoint"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        # Extract registration data
+        email = request.data.get('user_email')
+        password = request.data.get('password')
+        first_name = request.data.get('first_name')
+        last_name = request.data.get('last_name')
+        phone = request.data.get('user_phone_number')
+        organisation_id = request.data.get('organisation_id')
+
+        # Validation
+        if not all([email, password, first_name, last_name]):
+            return Response(
+                {'error': 'Email, password, first name, and last name are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if user already exists
+        if User.objects.filter(user_email=email).exists():
+            return Response(
+                {'error': 'User with this email already exists'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Create new user
+            user = User.objects.create(
+                user_email=email,
+                first_name=first_name,
+                last_name=last_name,
+                user_phone_number=phone,
+                organisation_id=organisation_id,
+                user_status='ACTIVE',
+                user_role='USER',  # Default role
+                user_is_active=True
+            )
+
+            # Set password (this hashes it)
+            user.set_password(password)
+            user.save()
+
+            # Generate JWT tokens
+            refresh = RefreshToken.for_user(user)
+
+            return Response({
+                'message': 'User registered successfully',
+                'token': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response(
+                {'error': f'Registration failed: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class LogoutView(APIView):
+    """User logout endpoint - blacklists the refresh token"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            refresh_token = request.data.get('refresh')
+
+            if not refresh_token:
+                return Response(
+                    {'error': 'Refresh token is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Blacklist the refresh token
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+
+            return Response(
+                {'message': 'Logout successful'},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Logout failed: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+class RefreshTokenView(APIView):
+    """Refresh access token using refresh token"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+
+        if not refresh_token:
+            return Response(
+                {'error': 'Refresh token is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Create RefreshToken instance
+            refresh = RefreshToken(refresh_token)
+
+            # Generate new access token
+            access_token = str(refresh.access_token)
+
+            return Response({
+                'token': access_token,
+                'expires_in': 3600  # 1 hour in seconds
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {'error': 'Invalid or expired refresh token'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+
+# ============== EXISTING VIEWSETS ==============
 
 class CountryViewSet(viewsets.ModelViewSet):
     queryset = Country.objects.filter(country_is_deleted=False)
@@ -76,9 +258,10 @@ class UserViewSet(viewsets.ModelViewSet):
             'countriesResponse': countries
         })
 
+    # DEPRECATED: Use LoginView instead
     @action(detail=False, methods=['post'])
     def login(self, request):
-        """User login endpoint"""
+        """User login endpoint - DEPRECATED: Use /auth/login/ instead"""
         username = request.data.get('username')
         password = request.data.get('password')
 
@@ -86,9 +269,10 @@ class UserViewSet(viewsets.ModelViewSet):
             user = User.objects.get(user_email=username)
             if user.check_password(password):
                 if user.user_status == 'ACTIVE':
-                    # Generate token here (implement JWT or similar)
+                    refresh = RefreshToken.for_user(user)
                     return Response({
-                        'token': 'generated_token_here',
+                        'token': str(refresh.access_token),
+                        'refresh': str(refresh),
                         'user': self.get_serializer(user).data
                     })
                 else:
@@ -134,6 +318,11 @@ class CropVarietyViewSet(viewsets.ModelViewSet):
             'cropsResponse': crops,
             'orgsResponse': {'results': orgs}
         })
+
+
+class CoverTypeViewSet(viewsets.ModelViewSet):
+    queryset = CoverType.objects.filter(deleted=False)
+    serializer_class = CoverTypeSerializer
 
 
 class ProductCategoryViewSet(viewsets.ModelViewSet):
@@ -415,7 +604,6 @@ class AdvisoryViewSet(viewsets.ModelViewSet):
         gender = request.data.get('gender')
         policy_status = request.data.get('policyStatus')
 
-        # Build query
         farmers = Farmer.objects.all()
 
         if province:
@@ -494,36 +682,3 @@ class DashboardViewSet(viewsets.ViewSet):
                 'total_claims_value': float(total_claims_value)
             }
         })
-
-
-# ============= URLs Configuration =============
-# urls.py
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import *
-
-router = DefaultRouter()
-router.register(r'countries', CountryViewSet)
-router.register(r'organisation_types', OrganizationTypeViewSet)
-router.register(r'organisations', OrganizationViewSet)
-router.register(r'users', UserViewSet)
-router.register(r'crops', CropViewSet)
-router.register(r'crop_varieties', CropVarietyViewSet)
-router.register(r'cover_types', viewsets.ModelViewSet.as_view({'get': 'list'}))
-router.register(r'product_categories', ProductCategoryViewSet)
-router.register(r'seasons', SeasonViewSet)
-router.register(r'farmers', FarmerViewSet)
-router.register(r'farms', FarmViewSet)
-router.register(r'insurance_products', InsuranceProductViewSet)
-router.register(r'quotations', QuotationViewSet)
-router.register(r'loss_assessors', LossAssessorViewSet)
-router.register(r'claims', ClaimViewSet)
-router.register(r'subsidies', SubsidyViewSet)
-router.register(r'invoices', InvoiceViewSet)
-router.register(r'advisories', AdvisoryViewSet)
-router.register(r'weather_data', WeatherDataViewSet)
-router.register(r'dashboard', DashboardViewSet, basename='dashboard')
-
-urlpatterns = [
-    path('api/v1/', include(router.urls)),
-]
