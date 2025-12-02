@@ -320,6 +320,8 @@ class Quotation(models.Model):
     quotation_date = models.DateTimeField(auto_now_add=True)
     payment_date = models.DateTimeField(null=True, blank=True)
     payment_reference = models.CharField(max_length=100, null=True, blank=True)
+    # farm_size = models.DecimalField(max_digits=10, decimal_places=2)
+    # unit_of_measure = models.CharField(max_length=20)
 
     class Meta:
         db_table = 'quotations'
@@ -440,3 +442,30 @@ class WeatherData(models.Model):
 
     def __str__(self):
         return f"{self.location} - {self.data_type}"
+
+    class WeatherData(models.Model):
+        DATA_TYPE_CHOICES = [
+            ('HISTORICAL', 'Historical'),
+            ('FORECAST', 'Forecast'),
+        ]
+
+        weather_id = models.AutoField(primary_key=True)
+        location = models.CharField(max_length=200)
+        data_type = models.CharField(max_length=50, choices=DATA_TYPE_CHOICES)
+        value = models.DecimalField(max_digits=10, decimal_places=2)
+        recorded_at = models.DateTimeField()
+        start_date = models.DateField(null=True, blank=True)
+        end_date = models.DateField(null=True, blank=True)
+        status = models.CharField(max_length=20, default='ACTIVE')
+        date_time_added = models.DateTimeField(auto_now_add=True)
+
+        class Meta:
+            db_table = 'weather_data'
+            ordering = ['-recorded_at']
+            indexes = [
+                models.Index(fields=['location', 'data_type']),
+                models.Index(fields=['recorded_at']),
+            ]
+
+        def __str__(self):
+            return f"{self.location} - {self.data_type} - {self.value}"

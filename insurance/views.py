@@ -3,13 +3,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
-from django.db.models import Q, Count, Sum
-from django.utils import timezone
 from datetime import datetime, timedelta
 from .models import *
 from .serializers import *
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
+from .models import WeatherData
+from .serializers import WeatherDataSerializer
+from django.utils import timezone
+from django.db.models import Q, Count, Avg, Max, Min, Sum
 
 
 # ============== AUTHENTICATION VIEWS ==============
@@ -29,11 +31,28 @@ class LoginView(APIView):
             )
 
         try:
-            # Get user by email
-            user = User.objects.get(user_email=username)
+            # Try to get user by email OR username
+            try:
+                user = User.objects.get(user_email=username)
+            except User.DoesNotExist:
+                # Try by user_name if email doesn't work
+                user = User.objects.get(user_name=username)
 
-            # Check password
+            # Check if password is hashed or plain text
+            password_valid = False
+
+            # First try with hashed password (proper way)
             if user.check_password(password):
+                password_valid = True
+            # If that fails, check if it's a plain text password (temporary fix)
+            elif user.password == password:
+                password_valid = True
+                # IMPORTANT: Hash the password for future logins
+                user.set_password(password)
+                user.save(update_fields=['password'])
+                print(f"Password hashed for user: {user.user_email}")
+
+            if password_valid:
                 # Check if user is active
                 if user.user_status != 'ACTIVE':
                     return Response(
@@ -65,6 +84,7 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         except Exception as e:
+            print(f"Login error: {str(e)}")
             return Response(
                 {'error': f'Login failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -218,28 +238,45 @@ class OrganizationTypeViewSet(viewsets.ModelViewSet):
 
 
 class OrganizationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing organizations.
+    Provides CRUD operations: list, retrieve, create, update, partial_update, destroy
+    """
     queryset = Organization.objects.filter(organisation_is_deleted=False)
     serializer_class = OrganizationSerializer
+    lookup_field = 'organisation_id'
 
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        if self.request.query_params.get('all') == 'true':
-            return queryset
-        return queryset[:10]
+    def get_permissions(self):
+        """
+        Allow unauthenticated access to list and retrieve operations
+        Require authentication for create, update, and delete operations
+        """
+        if self.action in ['list', 'retrieve']:
+            permission_classes = [AllowAny]
+        else:
+            permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
 
     @action(detail=False, methods=['get'])
     def with_details(self, request):
-        """Return organizations with related org types and countries"""
-        orgs = self.get_serializer(self.get_queryset(), many=True).data
-        org_types = OrganizationTypeSerializer(OrganizationType.objects.all(), many=True).data
-        countries = CountrySerializer(Country.objects.filter(country_is_deleted=False), many=True).data
+        """Custom action to get organizations with additional details"""
+        organisations = self.get_queryset()
+        serializer = self.get_serializer(organisations, many=True)
+        return Response(serializer.data)
 
-        return Response({
-            'orgsResponse': {'results': orgs},
-            'orgTypesResponse': {'results': org_types},
-            'countriesResponse': {'results': countries}
-        })
+    def perform_update(self, serializer):
+        """Override to add custom logic on update"""
+        serializer.save(
+            modified_by=self.request.user.user_id,
+            latest_ip=self.request.META.get('REMOTE_ADDR')
+        )
 
+    def perform_create(self, serializer):
+        """Override to add custom logic on create"""
+        serializer.save(
+            added_by=self.request.user.user_id,
+            source_ip=self.request.META.get('REMOTE_ADDR')
+        )
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -402,8 +439,12 @@ class InsuranceProductViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+# views.py - FIXED QuotationViewSet
+
 class QuotationViewSet(viewsets.ModelViewSet):
-    queryset = Quotation.objects.all()
+    queryset = Quotation.objects.select_related(
+        'farmer', 'farm', 'insurance_product'
+    ).all()
     serializer_class = QuotationSerializer
 
     def get_queryset(self):
@@ -417,6 +458,51 @@ class QuotationViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(farmer_id=farmer_id)
 
         return queryset
+
+    def create(self, request, *args, **kwargs):
+        """Create quotation with detailed error handling"""
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+        except serializers.ValidationError as e:
+            return Response(
+                {'detail': str(e), 'errors': e.detail},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'detail': f'Error creating quotation: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def update(self, request, *args, **kwargs):
+        """Update quotation with detailed error handling"""
+        try:
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+
+            return Response(serializer.data)
+        except serializers.ValidationError as e:
+            return Response(
+                {'detail': str(e), 'errors': e.detail},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'detail': f'Error updating quotation: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=['get'])
     def statistics(self, request):
@@ -434,27 +520,83 @@ class QuotationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def mark_paid(self, request, pk=None):
         """Mark quotation as paid"""
-        quotation = self.get_object()
-        quotation.status = 'PAID'
-        quotation.payment_date = timezone.now()
-        quotation.payment_reference = request.data.get('payment_reference')
-        quotation.save()
+        try:
+            quotation = self.get_object()
 
-        return Response(self.get_serializer(quotation).data)
+            if quotation.status == 'PAID':
+                return Response(
+                    {'error': 'Quotation is already marked as paid'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            payment_reference = request.data.get('payment_reference')
+            if not payment_reference:
+                return Response(
+                    {'error': 'Payment reference is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            quotation.status = 'PAID'
+            quotation.payment_date = timezone.now()
+            quotation.payment_reference = payment_reference
+            quotation.save()
+
+            return Response(self.get_serializer(quotation).data)
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to mark as paid: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=['post'])
     def write_policy(self, request, pk=None):
         """Convert quotation to written policy"""
-        quotation = self.get_object()
-        if quotation.status != 'PAID':
-            return Response({'error': 'Quotation must be paid first'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            quotation = self.get_object()
 
-        quotation.status = 'WRITTEN'
-        quotation.policy_number = f"POL-{timezone.now().strftime('%Y%m%d')}-{quotation.quotation_id}"
-        quotation.save()
+            if quotation.status != 'PAID':
+                return Response(
+                    {'error': 'Quotation must be paid before writing policy'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-        return Response(self.get_serializer(quotation).data)
+            if quotation.policy_number:
+                return Response(
+                    {'error': 'Policy already written',
+                     'policy_number': quotation.policy_number},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            quotation.status = 'WRITTEN'
+            quotation.policy_number = f"POL-{timezone.now().strftime('%Y%m%d')}-{quotation.quotation_id}"
+            quotation.save()
+
+            return Response({
+                'message': 'Policy written successfully',
+                'policy_number': quotation.policy_number,
+                'quotation': self.get_serializer(quotation).data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to write policy: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def with_details(self, request):
+        """Return quotations with related data for frontend"""
+        quotations = self.get_serializer(self.get_queryset(), many=True).data
+        farmers = FarmerSerializer(Farmer.objects.all(), many=True).data
+        products = InsuranceProductSerializer(
+            InsuranceProduct.objects.filter(status='ACTIVE'),
+            many=True
+        ).data
+
+        return Response({
+            'quotations': quotations,
+            'farmers': farmers,
+            'insurance_products': products
+        })
 
 
 class LossAssessorViewSet(viewsets.ModelViewSet):
@@ -539,6 +681,8 @@ class SubsidyViewSet(viewsets.ModelViewSet):
     serializer_class = SubsidySerializer
 
 
+# Add to views.py - Updated InvoiceViewSet with all settlement features
+
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
@@ -546,30 +690,214 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         status_filter = self.request.query_params.get('status')
+        organisation_id = self.request.query_params.get('organisation_id')
+
         if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        return queryset
+            queryset = queryset.filter(status=status_filter.upper())
+        if organisation_id:
+            queryset = queryset.filter(organisation_id=organisation_id)
+
+        return queryset.order_by('-date_time_added')
+
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Get invoice statistics by status"""
+        total = self.get_queryset().count()
+        by_status = self.get_queryset().values('status').annotate(count=Count('invoice_id'))
+
+        total_amount = self.get_queryset().aggregate(
+            total=Sum('amount')
+        )['total'] or 0
+
+        approved_amount = self.get_queryset().filter(
+            status='APPROVED'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        settled_amount = self.get_queryset().filter(
+            status='SETTLED'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        pending_amount = self.get_queryset().filter(
+            status='PENDING'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        return Response({
+            'total_invoices': total,
+            'by_status': list(by_status),
+            'total_amount': float(total_amount),
+            'approved_amount': float(approved_amount),
+            'settled_amount': float(settled_amount),
+            'pending_amount': float(pending_amount)
+        })
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Approve invoice"""
-        invoice = self.get_object()
-        invoice.status = 'APPROVED'
-        invoice.approved_date = timezone.now()
-        invoice.save()
+        """Approve invoice - moves from PENDING to APPROVED"""
+        try:
+            invoice = self.get_object()
 
-        return Response(self.get_serializer(invoice).data)
+            if invoice.status != 'PENDING':
+                return Response(
+                    {'error': 'Only pending invoices can be approved'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            invoice.status = 'APPROVED'
+            invoice.approved_date = timezone.now()
+            invoice.save()
+
+            return Response({
+                'message': 'Invoice approved successfully',
+                'invoice': self.get_serializer(invoice).data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to approve invoice: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=['post'])
     def settle(self, request, pk=None):
-        """Settle invoice"""
-        invoice = self.get_object()
-        invoice.status = 'SETTLED'
-        invoice.settlement_date = timezone.now()
-        invoice.payment_reference = request.data.get('payment_reference')
-        invoice.save()
+        """Settle invoice - moves from APPROVED to SETTLED"""
+        try:
+            invoice = self.get_object()
 
-        return Response(self.get_serializer(invoice).data)
+            if invoice.status != 'APPROVED':
+                return Response(
+                    {'error': 'Only approved invoices can be settled'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            payment_reference = request.data.get('payment_reference')
+            if not payment_reference:
+                return Response(
+                    {'error': 'Payment reference is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            invoice.status = 'SETTLED'
+            invoice.settlement_date = timezone.now()
+            invoice.payment_reference = payment_reference
+            invoice.save()
+
+            return Response({
+                'message': 'Invoice settled successfully',
+                'invoice': self.get_serializer(invoice).data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to settle invoice: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        """Reject invoice - moves to REJECTED status"""
+        try:
+            invoice = self.get_object()
+
+            if invoice.status not in ['PENDING', 'APPROVED']:
+                return Response(
+                    {'error': 'Cannot reject settled invoices'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            rejection_reason = request.data.get('rejection_reason', '')
+
+            invoice.status = 'REJECTED'
+            invoice.payment_reference = f"REJECTED: {rejection_reason}"
+            invoice.save()
+
+            return Response({
+                'message': 'Invoice rejected successfully',
+                'invoice': self.get_serializer(invoice).data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to reject invoice: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        """Get all pending invoices"""
+        invoices = self.get_queryset().filter(status='PENDING')
+        serializer = self.get_serializer(invoices, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def approved(self, request):
+        """Get all approved invoices (ready for settlement)"""
+        invoices = self.get_queryset().filter(status='APPROVED')
+        serializer = self.get_serializer(invoices, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def settled(self, request):
+        """Get all settled invoices"""
+        invoices = self.get_queryset().filter(status='SETTLED')
+        serializer = self.get_serializer(invoices, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def bulk_approve(self, request):
+        """Approve multiple invoices at once"""
+        invoice_ids = request.data.get('invoice_ids', [])
+
+        if not invoice_ids:
+            return Response(
+                {'error': 'No invoice IDs provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        invoices = Invoice.objects.filter(
+            invoice_id__in=invoice_ids,
+            status='PENDING'
+        )
+
+        count = invoices.update(
+            status='APPROVED',
+            approved_date=timezone.now()
+        )
+
+        return Response({
+            'message': f'{count} invoices approved successfully',
+            'count': count
+        })
+
+    @action(detail=False, methods=['post'])
+    def bulk_settle(self, request):
+        """Settle multiple invoices at once"""
+        invoice_ids = request.data.get('invoice_ids', [])
+        payment_reference = request.data.get('payment_reference')
+
+        if not invoice_ids:
+            return Response(
+                {'error': 'No invoice IDs provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not payment_reference:
+            return Response(
+                {'error': 'Payment reference is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        invoices = Invoice.objects.filter(
+            invoice_id__in=invoice_ids,
+            status='APPROVED'
+        )
+
+        count = invoices.update(
+            status='SETTLED',
+            settlement_date=timezone.now(),
+            payment_reference=payment_reference
+        )
+
+        return Response({
+            'message': f'{count} invoices settled successfully',
+            'count': count
+        })
 
 
 class AdvisoryViewSet(viewsets.ModelViewSet):
@@ -682,3 +1010,237 @@ class DashboardViewSet(viewsets.ViewSet):
                 'total_claims_value': float(total_claims_value)
             }
         })
+
+    class WeatherDataViewSet(viewsets.ModelViewSet):
+        """
+        ViewSet for managing weather data (historical and forecast)
+        """
+        queryset = WeatherData.objects.all()
+        serializer_class = WeatherDataSerializer
+
+        def get_queryset(self):
+            queryset = super().get_queryset()
+
+            # Filter by data type (HISTORICAL or FORECAST)
+            data_type = self.request.query_params.get('type')
+            if data_type:
+                queryset = queryset.filter(data_type=data_type.upper())
+
+            # Filter by location
+            location = self.request.query_params.get('location')
+            if location:
+                queryset = queryset.filter(location__icontains=location)
+
+            # Filter by date range
+            start_date = self.request.query_params.get('start_date')
+            end_date = self.request.query_params.get('end_date')
+
+            if start_date:
+                queryset = queryset.filter(recorded_at__gte=start_date)
+            if end_date:
+                queryset = queryset.filter(recorded_at__lte=end_date)
+
+            # Order by most recent first
+            return queryset.order_by('-recorded_at')
+
+        def create(self, request, *args, **kwargs):
+            """
+            Create new weather data entry
+            """
+            # Ensure data_type is uppercase
+            data = request.data.copy()
+            if 'data_type' in data:
+                data['data_type'] = data['data_type'].upper()
+
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+
+        def update(self, request, *args, **kwargs):
+            """
+            Update weather data entry
+            """
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+
+            data = request.data.copy()
+            if 'data_type' in data:
+                data['data_type'] = data['data_type'].upper()
+
+            serializer = self.get_serializer(instance, data=data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+
+            return Response(serializer.data)
+
+        @action(detail=False, methods=['get'])
+        def statistics(self, request):
+            """
+            Get weather data statistics
+            """
+            data_type = request.query_params.get('type', 'HISTORICAL')
+            location = request.query_params.get('location')
+
+            queryset = self.get_queryset().filter(data_type=data_type.upper())
+            if location:
+                queryset = queryset.filter(location=location)
+
+            stats = queryset.aggregate(
+                total_records=Count('weather_id'),
+                avg_value=Avg('value'),
+                max_value=Max('value'),
+                min_value=Min('value'),
+            )
+
+            # Get locations breakdown
+            locations = queryset.values('location').annotate(
+                count=Count('weather_id'),
+                avg_value=Avg('value')
+            ).order_by('-count')
+
+            return Response({
+                'statistics': stats,
+                'by_location': list(locations),
+                'data_type': data_type
+            })
+
+        @action(detail=False, methods=['get'])
+        def historical(self, request):
+            """
+            Get only historical weather data
+            """
+            queryset = self.get_queryset().filter(data_type='HISTORICAL')
+
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+
+        @action(detail=False, methods=['get'])
+        def forecast(self, request):
+            """
+            Get only forecast weather data
+            """
+            queryset = self.get_queryset().filter(data_type='FORECAST')
+
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = self.get_serializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+
+        @action(detail=False, methods=['get'])
+        def compare(self, request):
+            """
+            Compare historical and forecast data
+            """
+            location = request.query_params.get('location')
+            if not location:
+                return Response(
+                    {'error': 'Location parameter is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Get historical data
+            historical = WeatherData.objects.filter(
+                location=location,
+                data_type='HISTORICAL'
+            ).aggregate(
+                avg_value=Avg('value'),
+                max_value=Max('value'),
+                min_value=Min('value'),
+                count=Count('weather_id')
+            )
+
+            # Get forecast data
+            forecast = WeatherData.objects.filter(
+                location=location,
+                data_type='FORECAST'
+            ).aggregate(
+                avg_value=Avg('value'),
+                max_value=Max('value'),
+                min_value=Min('value'),
+                count=Count('weather_id')
+            )
+
+            return Response({
+                'location': location,
+                'historical': historical,
+                'forecast': forecast
+            })
+
+        @action(detail=False, methods=['get'])
+        def recent(self, request):
+            """
+            Get recent weather data (last 7 days)
+            """
+            data_type = request.query_params.get('type')
+            days = int(request.query_params.get('days', 7))
+
+            since = datetime.now() - timedelta(days=days)
+            queryset = self.get_queryset().filter(recorded_at__gte=since)
+
+            if data_type:
+                queryset = queryset.filter(data_type=data_type.upper())
+
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+
+        @action(detail=False, methods=['delete'])
+        def bulk_delete(self, request):
+            """
+            Bulk delete weather data by IDs
+            """
+            ids = request.data.get('ids', [])
+            if not ids:
+                return Response(
+                    {'error': 'No IDs provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            deleted_count = WeatherData.objects.filter(
+                weather_id__in=ids
+            ).delete()[0]
+
+            return Response({
+                'message': f'Successfully deleted {deleted_count} records',
+                'deleted_count': deleted_count
+            })
+
+        @action(detail=False, methods=['post'])
+        def bulk_create(self, request):
+            """
+            Bulk create weather data entries
+            """
+            data_list = request.data.get('data', [])
+            if not data_list:
+                return Response(
+                    {'error': 'No data provided'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Ensure all data_types are uppercase
+            for item in data_list:
+                if 'data_type' in item:
+                    item['data_type'] = item['data_type'].upper()
+
+            serializer = self.get_serializer(data=data_list, many=True)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+
+            return Response({
+                'message': f'Successfully created {len(serializer.data)} records',
+                'data': serializer.data
+            }, status=status.HTTP_201_CREATED)

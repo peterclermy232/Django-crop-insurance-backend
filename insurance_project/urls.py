@@ -66,7 +66,6 @@ router.register(r'invoices', InvoiceViewSet)
 router.register(r'advisories', AdvisoryViewSet)
 router.register(r'weather_data', WeatherDataViewSet)
 router.register(r'dashboard', DashboardViewSet, basename='dashboard')
-
 urlpatterns = [
     path('', api_root, name='api-root'),
     path('admin/', admin.site.urls),
