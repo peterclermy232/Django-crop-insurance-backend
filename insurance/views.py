@@ -12,6 +12,11 @@ from .models import WeatherData
 from .serializers import WeatherDataSerializer
 from django.utils import timezone
 from django.db.models import Q, Count, Avg, Max, Min, Sum
+# ADD THIS LINE - Import logger
+import logging
+
+# ADD THIS LINE - Create logger instance
+logger = logging.getLogger(__name__)
 
 
 # ============== AUTHENTICATION VIEWS ==============
@@ -386,6 +391,7 @@ class SeasonViewSet(viewsets.ModelViewSet):
 
 
 class FarmerViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
     queryset = Farmer.objects.all()
     serializer_class = FarmerSerializer
 
@@ -612,8 +618,9 @@ class LossAssessorViewSet(viewsets.ModelViewSet):
 
 
 class ClaimViewSet(viewsets.ModelViewSet):
-    queryset = Claim.objects.all()
+    queryset = Claim.objects.all().order_by('-claim_date')
     serializer_class = ClaimSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -627,6 +634,113 @@ class ClaimViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        """Create claim with detailed error handling and logging"""
+        try:
+            # Log the incoming data for debugging
+            logger.info(f"Attempting to create claim with data: {request.data}")
+
+            # Create a mutable copy of the data
+            data = request.data.copy()
+
+            # Handle loss_details if it's a string
+            if 'loss_details' in data:
+                if isinstance(data['loss_details'], str):
+                    try:
+                        # Try to parse as JSON
+                        import json
+                        data['loss_details'] = json.loads(data['loss_details'])
+                    except json.JSONDecodeError:
+                        # If it fails, create a simple dict with the string
+                        data['loss_details'] = {'description': data['loss_details']}
+                elif data['loss_details'] == '' or data['loss_details'] is None:
+                    # Handle empty values
+                    data['loss_details'] = {}
+            else:
+                # If not provided, set empty dict
+                data['loss_details'] = {}
+
+            # Validate and create
+            serializer = self.get_serializer(data=data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+
+            logger.info(f"Claim created successfully: {serializer.data.get('claim_number')}")
+
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {
+                    'message': 'Claim created successfully',
+                    'data': serializer.data
+                },
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+
+        except serializers.ValidationError as e:
+            logger.error(f"Validation error creating claim: {e.detail}")
+            return Response(
+                {
+                    'error': 'Validation failed',
+                    'details': e.detail
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error creating claim: {str(e)}", exc_info=True)
+            return Response(
+                {
+                    'error': 'Failed to create claim',
+                    'details': str(e),
+                    'type': type(e).__name__
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def update(self, request, *args, **kwargs):
+        """Update claim with detailed error handling"""
+        try:
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+
+            # Handle loss_details in update as well
+            data = request.data.copy()
+            if 'loss_details' in data:
+                if isinstance(data['loss_details'], str):
+                    try:
+                        import json
+                        data['loss_details'] = json.loads(data['loss_details'])
+                    except json.JSONDecodeError:
+                        data['loss_details'] = {'description': data['loss_details']}
+                elif data['loss_details'] == '' or data['loss_details'] is None:
+                    data['loss_details'] = {}
+
+            logger.info(f"Updating claim {instance.claim_number}")
+
+            serializer = self.get_serializer(instance, data=data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+
+            return Response(serializer.data)
+
+        except serializers.ValidationError as e:
+            logger.error(f"Validation error updating claim: {e.detail}")
+            return Response(
+                {
+                    'error': 'Validation failed',
+                    'details': e.detail
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error updating claim: {str(e)}", exc_info=True)
+            return Response(
+                {
+                    'error': 'Failed to update claim',
+                    'details': str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get claim statistics"""

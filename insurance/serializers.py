@@ -288,14 +288,142 @@ class LossAssessorSerializer(serializers.ModelSerializer):
 class ClaimSerializer(serializers.ModelSerializer):
     farmer_name = serializers.SerializerMethodField()
     policy_number = serializers.CharField(source='quotation.policy_number', read_only=True)
+    assessor_name = serializers.SerializerMethodField()
+    # Make loss_details optional and handle it properly
+    loss_details = serializers.JSONField(required=False, allow_null=True)
 
     class Meta:
         model = Claim
         fields = '__all__'
+        read_only_fields = ('claim_id', 'claim_date', 'approval_date')
 
     def get_farmer_name(self, obj):
-        return f"{obj.farmer.first_name} {obj.farmer.last_name}"
+        """Return full farmer name"""
+        return f"{obj.farmer.first_name} {obj.farmer.last_name}" if obj.farmer else None
 
+    def get_assessor_name(self, obj):
+        """Return assessor name if assigned"""
+        return obj.loss_assessor.user.user_name if obj.loss_assessor else None
+
+    def validate_loss_details(self, value):
+        """
+        Validate loss_details JSON field
+        Accepts: dict, None, or valid JSON string
+        """
+        if value is None:
+            return None
+
+        # If it's already a dict, return it
+        if isinstance(value, dict):
+            return value
+
+        # If it's a string, try to parse it as JSON
+        if isinstance(value, str):
+            # Handle empty string
+            if not value.strip():
+                return None
+
+            try:
+                parsed = json.loads(value)
+                if not isinstance(parsed, dict):
+                    raise serializers.ValidationError(
+                        'loss_details must be a JSON object (dictionary), not a list or other type'
+                    )
+                return parsed
+            except json.JSONDecodeError as e:
+                raise serializers.ValidationError(
+                    f'Invalid JSON format: {str(e)}'
+                )
+
+        # If it's some other type, reject it
+        raise serializers.ValidationError(
+            'loss_details must be a valid JSON object or dictionary'
+        )
+
+    def validate_farmer(self, value):
+        """Validate farmer exists and is active"""
+        if value and value.status != 'ACTIVE':
+            raise serializers.ValidationError('Selected farmer is not active')
+        return value
+
+    def validate_quotation(self, value):
+        """Validate quotation is a written policy"""
+        if value:
+            if value.status != 'WRITTEN':
+                raise serializers.ValidationError(
+                    'Can only create claims for written policies. Current status: ' + value.status
+                )
+            if not value.policy_number:
+                raise serializers.ValidationError('Quotation must have a policy number')
+        return value
+
+    def validate_estimated_loss_amount(self, value):
+        """Validate estimated loss amount"""
+        if value <= 0:
+            raise serializers.ValidationError('Estimated loss must be greater than zero')
+        return value
+
+    def validate_claim_number(self, value):
+        """Validate claim number uniqueness"""
+        if value:
+            existing = Claim.objects.filter(claim_number=value)
+            if self.instance:
+                existing = existing.exclude(claim_id=self.instance.claim_id)
+            if existing.exists():
+                raise serializers.ValidationError('A claim with this number already exists')
+        return value
+
+    def validate(self, data):
+        """Cross-field validation"""
+        # Validate estimated loss doesn't exceed sum insured
+        estimated_loss = data.get('estimated_loss_amount')
+        quotation = data.get('quotation')
+
+        if estimated_loss and quotation:
+            if estimated_loss > quotation.sum_insured:
+                raise serializers.ValidationError({
+                    'estimated_loss_amount': f'Estimated loss ({estimated_loss}) cannot exceed sum insured ({quotation.sum_insured})'
+                })
+
+        return data
+
+    def create(self, validated_data):
+        """Override create to auto-generate claim number if not provided"""
+        from django.utils import timezone
+
+        if not validated_data.get('claim_number'):
+            # Generate claim number: CLM-YYYYMMDD-XXXXXX
+            date_str = timezone.now().strftime('%Y%m%d')
+            last_claim = Claim.objects.filter(
+                claim_number__startswith=f'CLM-{date_str}'
+            ).order_by('-claim_id').first()
+
+            if last_claim:
+                try:
+                    last_num = int(last_claim.claim_number.split('-')[-1])
+                    new_num = last_num + 1
+                except (ValueError, IndexError):
+                    new_num = 1
+            else:
+                new_num = 1
+
+            validated_data['claim_number'] = f'CLM-{date_str}-{new_num:06d}'
+
+        # Ensure loss_details is properly set
+        if 'loss_details' not in validated_data or validated_data['loss_details'] is None:
+            validated_data['loss_details'] = {}
+
+        return super().create(validated_data)
+
+    def to_representation(self, instance):
+        """Customize output representation"""
+        data = super().to_representation(instance)
+
+        # Ensure loss_details is always a dict in output
+        if data.get('loss_details') is None:
+            data['loss_details'] = {}
+
+        return data
 
 class ClaimAssignmentSerializer(serializers.ModelSerializer):
     claim_number = serializers.CharField(source='claim.claim_number', read_only=True)

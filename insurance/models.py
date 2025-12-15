@@ -355,7 +355,7 @@ class Claim(models.Model):
     status = models.CharField(max_length=30, default='OPEN')
     claim_date = models.DateTimeField(auto_now_add=True)
     approval_date = models.DateTimeField(null=True, blank=True)
-
+    loss_details = models.JSONField(null=True, blank=True)
     class Meta:
         db_table = 'claims'
 
