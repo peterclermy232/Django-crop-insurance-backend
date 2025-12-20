@@ -1,8 +1,60 @@
+# insurance_project/urls.py
+"""
+Main URL Configuration
+"""
 from django.contrib import admin
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
 from django.http import JsonResponse
-from insurance.views import *
+from rest_framework.routers import DefaultRouter
+
+# Import all ViewSets
+from insurance.views import (
+    # Auth views
+    LoginView,
+    RegisterView,
+    LogoutView,
+    RefreshTokenView,
+
+    # Base views
+    CountryViewSet,
+    OrganizationTypeViewSet,
+    OrganizationViewSet,
+
+    # User views
+    UserViewSet,
+
+    # Agriculture views
+    CropViewSet,
+    CropVarietyViewSet,
+    CoverTypeViewSet,
+    ProductCategoryViewSet,
+    SeasonViewSet,
+
+    # Farmer views
+    FarmerViewSet,
+    FarmViewSet,
+
+    # Insurance views
+    InsuranceProductViewSet,
+
+    # Policy views
+    QuotationViewSet,
+
+    # Claims views
+    ClaimViewSet,
+    LossAssessorViewSet,
+
+    # Financial views
+    SubsidyViewSet,
+    InvoiceViewSet,
+
+    # Advisory views
+    AdvisoryViewSet,
+    WeatherDataViewSet,
+
+    # Dashboard views
+    DashboardViewSet,
+)
 
 
 def api_root(request):
@@ -13,7 +65,13 @@ def api_root(request):
         'endpoints': {
             'admin': '/admin/',
             'api': '/api/v1/',
-            'available_resources': [
+            'auth': {
+                'login': '/api/v1/auth/login/',
+                'register': '/api/v1/auth/register/',
+                'logout': '/api/v1/auth/logout/',
+                'refresh': '/api/v1/auth/token/refresh/',
+            },
+            'resources': [
                 '/api/v1/countries/',
                 '/api/v1/organisation_types/',
                 '/api/v1/organisations/',
@@ -34,17 +92,12 @@ def api_root(request):
                 '/api/v1/advisories/',
                 '/api/v1/weather_data/',
                 '/api/v1/dashboard/statistics/',
-            ],
-            'special_endpoints': {
-                'login': '/api/v1/users/login/',
-                'organizations_with_details': '/api/v1/organisations/with_details/',
-                'users_with_details': '/api/v1/users/with_details/',
-                'dashboard_statistics': '/api/v1/dashboard/statistics/',
-            }
+            ]
         }
     })
 
 
+# Create router and register all viewsets
 router = DefaultRouter()
 router.register(r'countries', CountryViewSet)
 router.register(r'organisation_types', OrganizationTypeViewSet)
@@ -66,11 +119,15 @@ router.register(r'invoices', InvoiceViewSet)
 router.register(r'advisories', AdvisoryViewSet)
 router.register(r'weather_data', WeatherDataViewSet)
 router.register(r'dashboard', DashboardViewSet, basename='dashboard')
+
 urlpatterns = [
+    # Root endpoint
     path('', api_root, name='api-root'),
+
+    # Admin panel
     path('admin/', admin.site.urls),
 
-    # Include all router URLs
+    # All API endpoints under /api/v1/
     path('api/v1/', include(router.urls)),
 
     # Authentication endpoints

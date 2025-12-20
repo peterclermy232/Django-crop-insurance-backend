@@ -1,0 +1,25 @@
+# Django
+Django>=4.2,<5.0
+djangorestframework>=3.14.0
+
+# JWT Authentication
+djangorestframework-simplejwt>=5.3.0
+
+# CORS Headers
+django-cors-headers>=4.3.0
+
+# API Documentation
+drf-yasg>=1.21.7
+
+# Database drivers (uncomment as needed)
+# psycopg2-binary>=2.9.9  # PostgreSQL
+# mysqlclient>=2.2.0      # MySQL
+
+# Development tools
+django-extensions>=3.2.3
+
+# Python dotenv for environment variables
+python-dotenv>=1.0.0
+
+# Pillow for image handling
+Pillow>=10.1.0
