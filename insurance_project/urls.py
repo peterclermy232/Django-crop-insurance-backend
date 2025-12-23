@@ -6,6 +6,8 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
+from django.conf import settings
+from django.conf.urls.static import static
 
 # Import all ViewSets
 from insurance.views import (
@@ -54,6 +56,8 @@ from insurance.views import (
 
     # Dashboard views
     DashboardViewSet,
+#inspection View
+ InspectionViewSet,
 )
 
 
@@ -92,6 +96,7 @@ def api_root(request):
                 '/api/v1/advisories/',
                 '/api/v1/weather_data/',
                 '/api/v1/dashboard/statistics/',
+                '/api/v1/sync/',
             ]
         }
     })
@@ -119,6 +124,7 @@ router.register(r'invoices', InvoiceViewSet)
 router.register(r'advisories', AdvisoryViewSet)
 router.register(r'weather_data', WeatherDataViewSet)
 router.register(r'dashboard', DashboardViewSet, basename='dashboard')
+router.register(r'inspections', InspectionViewSet)
 
 urlpatterns = [
     # Root endpoint
@@ -136,3 +142,6 @@ urlpatterns = [
     path('api/v1/auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('api/v1/auth/token/refresh/', RefreshTokenView.as_view(), name='auth-token-refresh'),
 ]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

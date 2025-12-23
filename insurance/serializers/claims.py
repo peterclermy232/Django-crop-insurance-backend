@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.utils import timezone
 import json
 from insurance.models import Claim, ClaimAssignment, LossAssessor
+from rest_framework.decorators import action
 
 
 class LossAssessorSerializer(serializers.ModelSerializer):
@@ -155,3 +156,44 @@ class ClaimAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClaimAssignment
         fields = '__all__'
+
+
+@action(detail=True, methods=['post'])
+def upload_photo(self, request, pk=None):
+    """Upload photo for claim"""
+    claim = self.get_object()
+    photo = request.FILES.get('photo')
+
+    if not photo:
+        return Response(
+            {'error': 'No photo provided'},
+            status=http_status.HTTP_400_BAD_REQUEST
+        )
+
+    from insurance.models.inspection import ClaimPhoto
+
+    claim_photo = ClaimPhoto.objects.create(
+        claim=claim,
+        photo=photo,
+        caption=request.data.get('caption', ''),
+        latitude=request.data.get('latitude'),
+        longitude=request.data.get('longitude')
+    )
+
+    return Response({
+        'photo_url': request.build_absolute_uri(claim_photo.photo.url),
+        'photo_id': claim_photo.photo_id,
+        'message': 'Photo uploaded successfully'
+    }, status=http_status.HTTP_201_CREATED)
+
+
+@action(detail=True, methods=['get'])
+def photos(self, request, pk=None):
+    """Get all photos for a claim"""
+    claim = self.get_object()
+    from insurance.models.inspection import ClaimPhoto
+    from insurance.serializers.inspection import ClaimPhotoSerializer
+
+    photos = ClaimPhoto.objects.filter(claim=claim)
+    serializer = ClaimPhotoSerializer(photos, many=True, context={'request': request})
+    return Response(serializer.data)
