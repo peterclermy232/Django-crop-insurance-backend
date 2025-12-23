@@ -108,10 +108,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
     "http://127.0.0.1:4200",
-    "http://127.0.0.1:57130",
-     "http://localhost:5173",   # Example if Flutter runs on 5173
-    "http://127.0.0.1:57179",  # Your Dart VM Service port (can be dynamic)
+"http://10.0.2.2:8001",
+"http://127.0.0.1:",
 ]
+
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2']
+
 
 CORS_ALLOW_CREDENTIALS = True
 
