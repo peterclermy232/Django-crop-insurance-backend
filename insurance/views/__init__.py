@@ -57,7 +57,7 @@ from .advisory import (
 
 # Dashboard views
 from .dashboard import DashboardViewSet
-
+from .inspection import InspectionViewSet
 __all__ = [
     # Auth
     'LoginView',
@@ -104,4 +104,6 @@ __all__ = [
 
     # Dashboard
     'DashboardViewSet',
+#inspection View
+ InspectionViewSet,
 ]
