@@ -217,6 +217,12 @@ LOGGING = {
         },
     },
 }
+ #Media files configuration
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Create logs directory
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
+os.makedirs(MEDIA_ROOT / 'mobile_uploads', exist_ok=True)
+os.makedirs(MEDIA_ROOT / 'claim_photos', exist_ok=True)
+os.makedirs(MEDIA_ROOT / 'inspection_photos', exist_ok=True)

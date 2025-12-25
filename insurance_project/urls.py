@@ -8,10 +8,14 @@ from django.http import JsonResponse
 from rest_framework.routers import DefaultRouter
 from django.conf import settings
 from django.conf.urls.static import static
+from insurance.views.notifications import NotificationViewSet, MessageViewSet
+from insurance.views.upload import MediaUploadView
+from insurance.views.sync import SyncAPIView
+
 
 # Import all ViewSets
 from insurance.views import (
-    # Auth views
+    # Auth viewsa
     LoginView,
     RegisterView,
     LogoutView,
@@ -58,6 +62,8 @@ from insurance.views import (
     DashboardViewSet,
 #inspection View
  InspectionViewSet,
+NotificationViewSet,
+MessageViewSet,
 )
 
 
@@ -125,6 +131,9 @@ router.register(r'advisories', AdvisoryViewSet)
 router.register(r'weather_data', WeatherDataViewSet)
 router.register(r'dashboard', DashboardViewSet, basename='dashboard')
 router.register(r'inspections', InspectionViewSet)
+# ADD to router.register() calls:
+router.register(r'notifications', NotificationViewSet, basename='notification')
+router.register(r'messages', MessageViewSet, basename='message')
 
 urlpatterns = [
     # Root endpoint
@@ -136,11 +145,13 @@ urlpatterns = [
     # All API endpoints under /api/v1/
     path('api/v1/', include(router.urls)),
 
+    path('api/v1/sync/', SyncAPIView.as_view(), name='sync'),
     # Authentication endpoints
     path('api/v1/auth/login/', LoginView.as_view(), name='auth-login'),
     path('api/v1/auth/register/', RegisterView.as_view(), name='auth-register'),
     path('api/v1/auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('api/v1/auth/token/refresh/', RefreshTokenView.as_view(), name='auth-token-refresh'),
+     path('api/v1/upload/', MediaUploadView.as_view(), name='media-upload'),
 ]
 
 if settings.DEBUG:

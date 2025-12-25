@@ -11,6 +11,9 @@ from insurance.serializers import (
     CountrySerializer,
 )
 
+from insurance.models import Notification, Message
+from insurance.serializers import NotificationSerializer, MessageSerializer
+from rest_framework.permissions import IsAuthenticated
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
@@ -66,3 +69,24 @@ class UserViewSet(viewsets.ModelViewSet):
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user)
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    queryset = Message.objects.all()
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from django.db.models import Q
+        return Message.objects.filter(
+            Q(sender=self.request.user) | Q(recipient=self.request.user)
+        )
