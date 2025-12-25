@@ -77,9 +77,10 @@ class ClaimSerializer(serializers.ModelSerializer):
     def validate_quotation(self, value):
         """Validate quotation is a written policy"""
         if value:
-            if value.status != 'WRITTEN':
+            # Accept both WRITTEN and PAID status for claims
+            if value.status not in ['WRITTEN', 'PAID']:
                 raise serializers.ValidationError(
-                    f'Can only create claims for written policies. Current status: {value.status}'
+                    f'Can only create claims for written or paid policies. Current status: {value.status}'
                 )
             if not value.policy_number:
                 raise serializers.ValidationError('Quotation must have a policy number')
