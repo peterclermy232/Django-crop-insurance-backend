@@ -127,7 +127,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://192.168.100.25:8001"
 ]
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2','web-production-39ac0.up.railway.app','192.168.100.25']
 
 
 CORS_ALLOW_CREDENTIALS = True
