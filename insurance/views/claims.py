@@ -1,3 +1,4 @@
+# insurance/views/claims.py
 import logging
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -6,8 +7,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status as http_status
 from django.utils import timezone
 from django.db.models import Count, Sum
+from django.db import transaction
 
-from insurance.models import Claim, LossAssessor, ClaimAssignment
+from insurance.models import Claim, LossAssessor, ClaimAssignment, Farmer, Quotation
 from insurance.serializers import (
     ClaimSerializer, LossAssessorSerializer, ClaimAssignmentSerializer
 )
@@ -45,13 +47,66 @@ class ClaimViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        """Create claim with detailed error handling and logging"""
+        """Create claim with comprehensive error handling"""
         try:
-            logger.info(f"Attempting to create claim with data: {request.data}")
+            logger.info(f"📥 Received claim creation request from user: {request.user.user_email}")
+            logger.info(f"📦 Request data: {request.data}")
 
+            # Extract and validate data
             data = request.data.copy()
 
-            # Handle loss_details if it's a string
+            # Validate required fields
+            required_fields = ['farmer', 'quotation', 'estimated_loss_amount']
+            missing_fields = [field for field in required_fields if field not in data]
+
+            if missing_fields:
+                logger.error(f"❌ Missing required fields: {missing_fields}")
+                return Response(
+                    {
+                        'error': 'Missing required fields',
+                        'missing_fields': missing_fields,
+                        'required_fields': required_fields
+                    },
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate farmer exists
+            try:
+                farmer = Farmer.objects.get(farmer_id=data['farmer'])
+                logger.info(f"✅ Farmer found: {farmer.first_name} {farmer.last_name}")
+            except Farmer.DoesNotExist:
+                logger.error(f"❌ Farmer not found: {data['farmer']}")
+                return Response(
+                    {'error': f'Farmer with ID {data["farmer"]} not found'},
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+
+            # Validate quotation exists
+            try:
+                quotation = Quotation.objects.get(quotation_id=data['quotation'])
+                logger.info(f"✅ Quotation found: {quotation.policy_number}")
+
+                # Check quotation status
+                if quotation.status not in ['WRITTEN', 'PAID']:
+                    logger.error(f"❌ Invalid quotation status: {quotation.status}")
+                    return Response(
+                        {
+                            'error': 'Invalid quotation status',
+                            'details': f'Quotation status is {quotation.status}. Must be WRITTEN or PAID.',
+                            'quotation_id': quotation.quotation_id,
+                            'current_status': quotation.status
+                        },
+                        status=http_status.HTTP_400_BAD_REQUEST
+                    )
+
+            except Quotation.DoesNotExist:
+                logger.error(f"❌ Quotation not found: {data['quotation']}")
+                return Response(
+                    {'error': f'Quotation with ID {data["quotation"]} not found'},
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+
+            # Handle loss_details
             if 'loss_details' in data:
                 if isinstance(data['loss_details'], str):
                     try:
@@ -64,18 +119,34 @@ class ClaimViewSet(viewsets.ModelViewSet):
             else:
                 data['loss_details'] = {}
 
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
+            logger.info(f"📋 Processed loss_details: {data['loss_details']}")
 
-            logger.info(
-                f"Claim created successfully: {serializer.data.get('claim_number')}"
-            )
+            # Validate and create claim
+            serializer = self.get_serializer(data=data)
+
+            if not serializer.is_valid():
+                logger.error(f"❌ Validation errors: {serializer.errors}")
+                return Response(
+                    {
+                        'error': 'Validation failed',
+                        'details': serializer.errors
+                    },
+                    status=http_status.HTTP_400_BAD_REQUEST
+                )
+
+            # Create claim in transaction
+            with transaction.atomic():
+                self.perform_create(serializer)
+                claim = serializer.instance
+
+                logger.info(f"✅ Claim created successfully: {claim.claim_number}")
 
             headers = self.get_success_headers(serializer.data)
             return Response(
                 {
                     'message': 'Claim created successfully',
+                    'claim_id': claim.claim_id,
+                    'claim_number': claim.claim_number,
                     'data': serializer.data
                 },
                 status=http_status.HTTP_201_CREATED,
@@ -83,7 +154,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
             )
 
         except Exception as e:
-            logger.error(f"Unexpected error creating claim: {str(e)}", exc_info=True)
+            logger.error(f"❌ Unexpected error creating claim: {str(e)}", exc_info=True)
             return Response(
                 {
                     'error': 'Failed to create claim',
@@ -94,12 +165,14 @@ class ClaimViewSet(viewsets.ModelViewSet):
             )
 
     def update(self, request, *args, **kwargs):
-        """Update claim with detailed error handling"""
+        """Update claim with error handling"""
         try:
             partial = kwargs.pop('partial', False)
             instance = self.get_object()
 
             data = request.data.copy()
+
+            # Handle loss_details
             if 'loss_details' in data:
                 if isinstance(data['loss_details'], str):
                     try:
@@ -110,7 +183,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
                 elif data['loss_details'] == '' or data['loss_details'] is None:
                     data['loss_details'] = {}
 
-            logger.info(f"Updating claim {instance.claim_number}")
+            logger.info(f"🔄 Updating claim {instance.claim_number}")
 
             serializer = self.get_serializer(instance, data=data, partial=partial)
             serializer.is_valid(raise_exception=True)
@@ -119,7 +192,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         except Exception as e:
-            logger.error(f"Unexpected error updating claim: {str(e)}", exc_info=True)
+            logger.error(f"❌ Error updating claim: {str(e)}", exc_info=True)
             return Response(
                 {
                     'error': 'Failed to update claim',
@@ -185,3 +258,42 @@ class ClaimViewSet(viewsets.ModelViewSet):
         claim.save()
 
         return Response(self.get_serializer(claim).data)
+
+    @action(detail=True, methods=['post'])
+    def upload_photo(self, request, pk=None):
+        """Upload photo for claim"""
+        claim = self.get_object()
+        photo = request.FILES.get('photo')
+
+        if not photo:
+            return Response(
+                {'error': 'No photo provided'},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+
+        from insurance.models.inspection import ClaimPhoto
+
+        claim_photo = ClaimPhoto.objects.create(
+            claim=claim,
+            photo=photo,
+            caption=request.data.get('caption', ''),
+            latitude=request.data.get('latitude'),
+            longitude=request.data.get('longitude')
+        )
+
+        return Response({
+            'photo_url': request.build_absolute_uri(claim_photo.photo.url),
+            'photo_id': claim_photo.photo_id,
+            'message': 'Photo uploaded successfully'
+        }, status=http_status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def photos(self, request, pk=None):
+        """Get all photos for a claim"""
+        claim = self.get_object()
+        from insurance.models.inspection import ClaimPhoto
+        from insurance.serializers.inspection import ClaimPhotoSerializer
+
+        photos = ClaimPhoto.objects.filter(claim=claim)
+        serializer = ClaimPhotoSerializer(photos, many=True, context={'request': request})
+        return Response(serializer.data)

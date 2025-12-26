@@ -1,8 +1,11 @@
+# insurance/serializers/claims.py
 from rest_framework import serializers
 from django.utils import timezone
 import json
-from insurance.models import Claim, ClaimAssignment, LossAssessor
-from rest_framework.decorators import action
+import logging
+from insurance.models import Claim, ClaimAssignment, LossAssessor, Farmer, Quotation
+
+logger = logging.getLogger(__name__)
 
 
 class LossAssessorSerializer(serializers.ModelSerializer):
@@ -29,7 +32,7 @@ class ClaimSerializer(serializers.ModelSerializer):
     class Meta:
         model = Claim
         fields = '__all__'
-        read_only_fields = ('claim_id', 'claim_date', 'approval_date')
+        read_only_fields = ('claim_id', 'claim_date', 'approval_date', 'claim_number')
 
     def get_farmer_name(self, obj):
         """Return full farmer name"""
@@ -46,14 +49,14 @@ class ClaimSerializer(serializers.ModelSerializer):
     def validate_loss_details(self, value):
         """Validate loss_details JSON field"""
         if value is None:
-            return None
+            return {}
 
         if isinstance(value, dict):
             return value
 
         if isinstance(value, str):
             if not value.strip():
-                return None
+                return {}
             try:
                 parsed = json.loads(value)
                 if not isinstance(parsed, dict):
@@ -75,12 +78,13 @@ class ClaimSerializer(serializers.ModelSerializer):
         return value
 
     def validate_quotation(self, value):
-        """Validate quotation is a written policy"""
+        """Validate quotation is a written or paid policy"""
         if value:
-            # Accept both WRITTEN and PAID status for claims
+            # Accept WRITTEN or PAID status for claims
             if value.status not in ['WRITTEN', 'PAID']:
                 raise serializers.ValidationError(
-                    f'Can only create claims for written or paid policies. Current status: {value.status}'
+                    f'Can only create claims for written or paid policies. '
+                    f'Current status: {value.status}'
                 )
             if not value.policy_number:
                 raise serializers.ValidationError('Quotation must have a policy number')
@@ -107,43 +111,70 @@ class ClaimSerializer(serializers.ModelSerializer):
         estimated_loss = data.get('estimated_loss_amount')
         quotation = data.get('quotation')
 
+        # If both are provided, validate loss doesn't exceed sum insured
         if estimated_loss and quotation:
             if estimated_loss > quotation.sum_insured:
                 raise serializers.ValidationError({
-                    'estimated_loss_amount': f'Estimated loss ({estimated_loss}) cannot exceed sum insured ({quotation.sum_insured})'
+                    'estimated_loss_amount': (
+                        f'Estimated loss ({estimated_loss}) cannot exceed '
+                        f'sum insured ({quotation.sum_insured})'
+                    )
+                })
+
+        # Validate farmer matches quotation's farmer
+        farmer = data.get('farmer')
+        if farmer and quotation:
+            if farmer.farmer_id != quotation.farmer.farmer_id:
+                raise serializers.ValidationError({
+                    'farmer': 'Selected farmer must match the quotation\'s farmer'
                 })
 
         return data
 
     def create(self, validated_data):
         """Override create to auto-generate claim number if not provided"""
-        if not validated_data.get('claim_number'):
-            date_str = timezone.now().strftime('%Y%m%d')
-            last_claim = Claim.objects.filter(
-                claim_number__startswith=f'CLM-{date_str}'
-            ).order_by('-claim_id').first()
+        try:
+            if not validated_data.get('claim_number'):
+                date_str = timezone.now().strftime('%Y%m%d')
+                last_claim = Claim.objects.filter(
+                    claim_number__startswith=f'CLM-{date_str}'
+                ).order_by('-claim_id').first()
 
-            if last_claim:
-                try:
-                    last_num = int(last_claim.claim_number.split('-')[-1])
-                    new_num = last_num + 1
-                except (ValueError, IndexError):
+                if last_claim:
+                    try:
+                        last_num = int(last_claim.claim_number.split('-')[-1])
+                        new_num = last_num + 1
+                    except (ValueError, IndexError):
+                        new_num = 1
+                else:
                     new_num = 1
-            else:
-                new_num = 1
 
-            validated_data['claim_number'] = f'CLM-{date_str}-{new_num:06d}'
+                validated_data['claim_number'] = f'CLM-{date_str}-{new_num:06d}'
 
-        if 'loss_details' not in validated_data or validated_data['loss_details'] is None:
-            validated_data['loss_details'] = {}
+            # Ensure loss_details is a dict
+            if 'loss_details' not in validated_data or validated_data['loss_details'] is None:
+                validated_data['loss_details'] = {}
 
-        return super().create(validated_data)
+            logger.info(f"Creating claim with data: {validated_data}")
+
+            claim = super().create(validated_data)
+
+            logger.info(f"Claim created successfully: {claim.claim_number}")
+
+            return claim
+
+        except Exception as e:
+            logger.error(f"Error creating claim: {str(e)}", exc_info=True)
+            raise
 
     def to_representation(self, instance):
         """Customize output representation"""
         data = super().to_representation(instance)
+
+        # Ensure loss_details is always a dict, never null
         if data.get('loss_details') is None:
             data['loss_details'] = {}
+
         return data
 
 
@@ -157,44 +188,3 @@ class ClaimAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ClaimAssignment
         fields = '__all__'
-
-
-@action(detail=True, methods=['post'])
-def upload_photo(self, request, pk=None):
-    """Upload photo for claim"""
-    claim = self.get_object()
-    photo = request.FILES.get('photo')
-
-    if not photo:
-        return Response(
-            {'error': 'No photo provided'},
-            status=http_status.HTTP_400_BAD_REQUEST
-        )
-
-    from insurance.models.inspection import ClaimPhoto
-
-    claim_photo = ClaimPhoto.objects.create(
-        claim=claim,
-        photo=photo,
-        caption=request.data.get('caption', ''),
-        latitude=request.data.get('latitude'),
-        longitude=request.data.get('longitude')
-    )
-
-    return Response({
-        'photo_url': request.build_absolute_uri(claim_photo.photo.url),
-        'photo_id': claim_photo.photo_id,
-        'message': 'Photo uploaded successfully'
-    }, status=http_status.HTTP_201_CREATED)
-
-
-@action(detail=True, methods=['get'])
-def photos(self, request, pk=None):
-    """Get all photos for a claim"""
-    claim = self.get_object()
-    from insurance.models.inspection import ClaimPhoto
-    from insurance.serializers.inspection import ClaimPhotoSerializer
-
-    photos = ClaimPhoto.objects.filter(claim=claim)
-    serializer = ClaimPhotoSerializer(photos, many=True, context={'request': request})
-    return Response(serializer.data)
