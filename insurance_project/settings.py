@@ -30,6 +30,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -60,6 +61,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'insurance_project.wsgi.application'
 
 # Database
+"""
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -68,6 +70,18 @@ DATABASES = {
         'PASSWORD': os.environ.get('DB_PASSWORD', 'password'),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
         'PORT': os.environ.get('DB_PORT', '5432'),
+    }
+}
+"""
+# --- Database (Railway PostgreSQL) ---
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('PGDATABASE'),
+        'USER': os.environ.get('PGUSER'),
+        'PASSWORD': os.environ.get('PGPASSWORD'),
+        'HOST': os.environ.get('PGHOST'),
+        'PORT': os.environ.get('PGPORT'),
     }
 }
 
@@ -110,6 +124,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:4200",
 "http://10.0.2.2:8001",
 "http://127.0.0.1:",
+    "http://192.168.100.25:8001"
 ]
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2']
