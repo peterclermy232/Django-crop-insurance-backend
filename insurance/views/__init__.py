@@ -54,7 +54,7 @@ from .advisory import (
     AdvisoryViewSet,
     WeatherDataViewSet,
 )
-
+from insurance.views.user import UserViewSet, RoleTypeViewSet
 # Dashboard views
 from .dashboard import DashboardViewSet
 from .inspection import InspectionViewSet

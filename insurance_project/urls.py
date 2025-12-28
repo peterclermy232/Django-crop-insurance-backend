@@ -65,7 +65,7 @@ from insurance.views import (
 NotificationViewSet,
 MessageViewSet,
 )
-
+from insurance.views.user import RoleTypeViewSet
 
 def api_root(request):
     """API root endpoint showing all available endpoints"""
@@ -134,6 +134,7 @@ router.register(r'inspections', InspectionViewSet)
 # ADD to router.register() calls:
 router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'messages', MessageViewSet, basename='message')
+router.register(r'roles', RoleTypeViewSet, basename='role')
 
 urlpatterns = [
     # Root endpoint
