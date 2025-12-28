@@ -61,7 +61,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'insurance_project.wsgi.application'
 
 # Database
-"""
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -72,9 +71,9 @@ DATABASES = {
         'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
-"""
+
 # --- Database (Railway PostgreSQL) ---
-DATABASES = {
+"""DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.environ.get('PGDATABASE'),
@@ -83,7 +82,7 @@ DATABASES = {
         'HOST': os.environ.get('PGHOST'),
         'PORT': os.environ.get('PGPORT'),
     }
-}
+}"""
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
