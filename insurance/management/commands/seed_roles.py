@@ -1,5 +1,3 @@
-# Create this file: management/commands/seed_roles.py
-
 from django.core.management.base import BaseCommand
 from insurance.models import RoleType, Organization
 
@@ -17,14 +15,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR('Default organization not found. Please run seed_data first.'))
             return
 
-        # Default roles with descriptions
+        # Default roles with descriptions and permissions
         default_roles = [
             {
                 'role_name': 'SUPERUSER',
                 'role_description': 'System administrator with full access to all features',
                 'is_system_role': True,
                 'permissions': {
-                    'all': True
+                    'all': True  # Full access to everything
                 }
             },
             {
@@ -33,10 +31,18 @@ class Command(BaseCommand):
                 'is_system_role': True,
                 'permissions': {
                     'users': ['create', 'read', 'update', 'delete'],
-                    'roles': ['read'],
+                    'roles': ['create', 'read', 'update', 'delete'],
                     'farmers': ['create', 'read', 'update', 'delete'],
+                    'farms': ['create', 'read', 'update', 'delete'],
                     'quotations': ['create', 'read', 'update', 'delete'],
-                    'claims': ['create', 'read', 'update', 'delete']
+                    'claims': ['create', 'read', 'update', 'delete'],
+                    'products': ['create', 'read', 'update', 'delete'],
+                    'crops': ['create', 'read', 'update', 'delete'],
+                    'seasons': ['create', 'read', 'update', 'delete'],
+                    'advisories': ['create', 'read', 'update', 'delete'],
+                    'weather': ['create', 'read', 'update', 'delete'],
+                    'inspections': ['read', 'update'],
+                    'reports': ['read'],
                 }
             },
             {
@@ -46,18 +52,45 @@ class Command(BaseCommand):
                 'permissions': {
                     'users': ['read'],
                     'farmers': ['read', 'update'],
-                    'quotations': ['read', 'update'],
-                    'claims': ['read', 'update']
+                    'farms': ['read', 'update'],
+                    'quotations': ['create', 'read', 'update'],
+                    'claims': ['read', 'update'],
+                    'products': ['read'],
+                    'crops': ['read'],
+                    'seasons': ['read'],
+                    'advisories': ['create', 'read', 'update'],
+                    'weather': ['read'],
+                    'inspections': ['read', 'update'],
+                    'reports': ['read'],
                 }
             },
             {
                 'role_name': 'ASSESSOR',
-                'role_description': 'Loss assessor for claim evaluation',
+                'role_description': 'Loss assessor for claim evaluation and field inspections',
                 'is_system_role': True,
                 'permissions': {
                     'claims': ['read', 'update'],
+                    'inspections': ['create', 'read', 'update'],
                     'farmers': ['read'],
-                    'quotations': ['read']
+                    'farms': ['read'],
+                    'quotations': ['read'],
+                    'weather': ['read'],
+                    'reports': ['read'],
+                }
+            },
+            {
+                'role_name': 'AGENT',
+                'role_description': 'Insurance agent for sales and customer management',
+                'is_system_role': True,
+                'permissions': {
+                    'farmers': ['create', 'read', 'update'],
+                    'farms': ['create', 'read', 'update'],
+                    'quotations': ['create', 'read', 'update'],
+                    'claims': ['create', 'read'],
+                    'products': ['read'],
+                    'crops': ['read'],
+                    'seasons': ['read'],
+                    'weather': ['read'],
                 }
             },
             {
@@ -66,12 +99,17 @@ class Command(BaseCommand):
                 'is_system_role': True,
                 'permissions': {
                     'farmers': ['read'],
+                    'farms': ['read'],
                     'quotations': ['read'],
-                    'claims': ['read']
+                    'claims': ['read'],
+                    'products': ['read'],
+                    'crops': ['read'],
+                    'seasons': ['read'],
+                    'weather': ['read'],
                 }
             },
             {
-                'role_name': 'API USER',
+                'role_name': 'API_USER',
                 'role_description': 'API integration user',
                 'is_system_role': True,
                 'permissions': {
@@ -85,7 +123,9 @@ class Command(BaseCommand):
                 'permissions': {
                     'profile': ['read', 'update'],
                     'quotations': ['read'],
-                    'claims': ['create', 'read']
+                    'claims': ['create', 'read'],
+                    'farms': ['read'],
+                    'weather': ['read'],
                 }
             }
         ]
@@ -107,11 +147,11 @@ class Command(BaseCommand):
 
             if created:
                 created_count += 1
-                self.stdout.write(self.style.SUCCESS(f'Created role: {role.role_name}'))
+                self.stdout.write(self.style.SUCCESS(f'✓ Created role: {role.role_name}'))
             else:
                 updated_count += 1
-                self.stdout.write(self.style.WARNING(f'Updated role: {role.role_name}'))
+                self.stdout.write(self.style.WARNING(f'↻ Updated role: {role.role_name}'))
 
         self.stdout.write(self.style.SUCCESS(
-            f'\nSeeding complete! Created: {created_count}, Updated: {updated_count}'
+            f'\n✓ Seeding complete! Created: {created_count}, Updated: {updated_count}'
         ))
