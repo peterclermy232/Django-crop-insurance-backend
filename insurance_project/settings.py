@@ -1,4 +1,3 @@
-# settings.py
 import os
 from pathlib import Path
 from datetime import timedelta
@@ -10,10 +9,16 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-in-produc
 # DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
+# ALLOWED_HOSTS Configuration
 ALLOWED_HOSTS = os.environ.get(
     "ALLOWED_HOSTS",
-    "localhost,127.0.0.1"
+    "localhost,127.0.0.1,web-production-39ac0.up.railway.app"
 ).replace('"', '').replace(" ", "").split(",")
+
+# CSRF Trusted Origins (Required for Railway deployment)
+CSRF_TRUSTED_ORIGINS = [
+    'https://web-production-39ac0.up.railway.app',
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -64,19 +69,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'insurance_project.wsgi.application'
 
-# Database
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.environ.get('DB_NAME', 'insurance_db'),
-#         'USER': os.environ.get('DB_USER', 'postgres'),
-#         'PASSWORD': os.environ.get('DB_PASSWORD', 'password'),
-#         'HOST': os.environ.get('DB_HOST', 'localhost'),
-#         'PORT': os.environ.get('DB_PORT', '5432'),
-#     }
-# }
-
-# --- Database (Railway PostgreSQL) ---
+# Database (Railway PostgreSQL)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -87,7 +80,6 @@ DATABASES = {
         'PORT': os.environ.get('PGPORT', '5432'),
     }
 }
-
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -117,22 +109,29 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# Media files configuration
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS settings
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:4200",
-    "http://127.0.0.1:4200",
-"http://10.0.2.2:8001",
-"http://127.0.0.1:",
-    "http://192.168.100.25:8001"
-]
-
-# ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2','web-production-39ac0.up.railway.app','192.168.100.25']
-
+# CORS settings - Updated for production and development
+if DEBUG:
+    # Development CORS settings
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:4200",
+        "http://127.0.0.1:4200",
+        "http://10.0.2.2:8001",
+        "http://127.0.0.1:8000",
+        "http://192.168.100.25:8001"
+    ]
+else:
+    # Production CORS settings
+    CORS_ALLOWED_ORIGINS = [
+        "https://web-production-39ac0.up.railway.app",
+        # Add your frontend URL here if it's hosted separately
+        # "https://your-frontend-domain.com",
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -164,7 +163,6 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
-        # 'rest_framework.permissions.AllowAny',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100,
@@ -178,8 +176,6 @@ REST_FRAMEWORK = {
 }
 
 # JWT Settings
-from datetime import timedelta
-
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -206,9 +202,17 @@ EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@insurance.com')
 
-
-# Custom user model
-AUTH_USER_MODEL = 'insurance.User'
+# Security settings for production
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
 
 # Logging
 LOGGING = {
@@ -243,6 +247,7 @@ LOGGING = {
         },
     },
 }
+
  #Media files configuration
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
