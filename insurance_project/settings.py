@@ -124,14 +124,14 @@ if DEBUG:
         "http://127.0.0.1:4200",
         "http://10.0.2.2:8001",
         "http://127.0.0.1:8000",
-        "http://192.168.100.25:8001"
+        "http://192.168.100.25:8001",
+        "https://cropinsurance.netlify.app/"
     ]
 else:
     # Production CORS settings
     CORS_ALLOWED_ORIGINS = [
         "https://web-production-39ac0.up.railway.app",
-        # Add your frontend URL here if it's hosted separately
-        # "https://your-frontend-domain.com",
+        "https://cropinsurance.netlify.app/",
     ]
 
 CORS_ALLOW_CREDENTIALS = True
