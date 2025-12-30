@@ -1,3 +1,4 @@
+# settings.py
 import os
 from pathlib import Path
 from datetime import timedelta
@@ -203,16 +204,17 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@insurance.com')
 
 # Security settings for production
+# IMPORTANT: Railway handles SSL/HTTPS, so DON'T use SECURE_SSL_REDIRECT
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+    # DO NOT USE: SECURE_SSL_REDIRECT = True  # This causes redirect loop on Railway!
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
+    
+    # Trust Railway's proxy headers
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Logging
 LOGGING = {
@@ -248,11 +250,7 @@ LOGGING = {
     },
 }
 
- #Media files configuration
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
-# Create logs directory
+# Create necessary directories
 os.makedirs(BASE_DIR / 'logs', exist_ok=True)
 os.makedirs(MEDIA_ROOT / 'mobile_uploads', exist_ok=True)
 os.makedirs(MEDIA_ROOT / 'claim_photos', exist_ok=True)
