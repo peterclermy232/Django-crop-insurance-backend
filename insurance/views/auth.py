@@ -5,8 +5,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 
-from insurance.models import User
+from insurance.models import User, RoleType
 from insurance.serializers import UserSerializer
+from insurance.serializers.auth import RegistrationSerializer
 
 
 class LoginView(APIView):
@@ -75,58 +76,73 @@ class LoginView(APIView):
 
 
 class RegisterView(APIView):
-    """User registration endpoint"""
+    """User registration endpoint with role support"""
     permission_classes = [AllowAny]
 
     def post(self, request):
-        email = request.data.get('user_email')
-        password = request.data.get('password')
-        first_name = request.data.get('first_name')
-        last_name = request.data.get('last_name')
-        phone = request.data.get('user_phone_number')
-        organisation_id = request.data.get('organisation_id')
+        """
+        Register a new user with specified role
+        
+        Request body:
+        {
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": "john@example.com",
+            "password": "securepassword123",
+            "user_phone_number": "+254700000000",
+            "organisation_id": 1,
+            "user_role": "AGENT"  // Optional, defaults to CUSTOMER
+        }
+        """
+        serializer = RegistrationSerializer(
+            data=request.data,
+            context={'request': request}
+        )
 
-        if not all([email, password, first_name, last_name]):
-            return Response(
-                {'error': 'Email, password, first name, and last name are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if serializer.is_valid():
+            try:
+                user = serializer.save()
+                
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
 
-        if User.objects.filter(user_email=email).exists():
-            return Response(
-                {'error': 'User with this email already exists'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+                return Response({
+                    'message': 'User registered successfully',
+                    'user': {
+                        'user_id': user.user_id,
+                        'user_name': user.user_name,
+                        'user_email': user.user_email,
+                        'user_role': user.user_role,
+                        'user_status': user.user_status,
+                        'organisation_id': user.organisation.organisation_id,
+                        'organisation_name': user.organisation.organisation_name,
+                    },
+                    'token': str(refresh.access_token),
+                    'refresh': str(refresh),
+                }, status=status.HTTP_201_CREATED)
 
-        try:
-            user = User.objects.create(
-                user_email=email,
-                first_name=first_name,
-                last_name=last_name,
-                user_phone_number=phone,
-                organisation_id=organisation_id,
-                user_status='ACTIVE',
-                user_role='USER',
-                user_is_active=True
-            )
+            except Exception as e:
+                return Response(
+                    {'error': f'Registration failed: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
+        return Response(
+            {'errors': serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-            user.set_password(password)
-            user.save()
-
-            refresh = RefreshToken.for_user(user)
-
-            return Response({
-                'message': 'User registered successfully',
-                'token': str(refresh.access_token),
-                'refresh': str(refresh),
-                'user': UserSerializer(user).data
-            }, status=status.HTTP_201_CREATED)
-
-        except Exception as e:
-            return Response(
-                {'error': f'Registration failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    def get(self, request):
+        """Get available roles for registration"""
+        roles = RoleType.objects.filter(role_status='ACTIVE').values(
+            'role_name', 'role_description'
+        )
+        
+        return Response({
+            'available_roles': list(roles),
+            'default_role': 'CUSTOMER',
+            'restricted_roles': ['SUPERUSER', 'ADMIN']  # Require admin approval
+        })
 
 
 class LogoutView(APIView):
