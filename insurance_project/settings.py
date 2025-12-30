@@ -61,28 +61,28 @@ TEMPLATES = [
 WSGI_APPLICATION = 'insurance_project.wsgi.application'
 
 # Database
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': os.environ.get('DB_NAME', 'insurance_db'),
+#         'USER': os.environ.get('DB_USER', 'postgres'),
+#         'PASSWORD': os.environ.get('DB_PASSWORD', 'password'),
+#         'HOST': os.environ.get('DB_HOST', 'localhost'),
+#         'PORT': os.environ.get('DB_PORT', '5432'),
+#     }
+# }
+
+# --- Database (Railway PostgreSQL) ---
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'insurance_db'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'password'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'NAME': os.environ.get('DB_NAME'),
+        'USER': os.environ.get('DB_USER'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
+        'HOST': os.environ.get('DB_HOST'),
         'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
-
-# --- Database (Railway PostgreSQL) ---
-# """DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': os.environ.get('PGDATABASE'),
-#         'USER': os.environ.get('PGUSER'),
-#         'PASSWORD': os.environ.get('PGPASSWORD'),
-#         'HOST': os.environ.get('PGHOST'),
-#         'PORT': os.environ.get('PGPORT'),
-#     }
-# }"""
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -126,7 +126,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://192.168.100.25:8001"
 ]
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2','web-production-39ac0.up.railway.app','192.168.100.25']
+# ALLOWED_HOSTS = ['localhost', '127.0.0.1', '10.0.2.2','web-production-39ac0.up.railway.app','192.168.100.25']
 
 
 CORS_ALLOW_CREDENTIALS = True
