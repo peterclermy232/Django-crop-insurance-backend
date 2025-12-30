@@ -23,7 +23,8 @@ class UserManager(BaseUserManager):
     def create_superuser(self, user_email, user_name, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        extra_fields.setdefault('user_type', 'SUPERUSER')
+        extra_fields.setdefault('user_role', 'SUPERUSER')  # Fixed: was 'user_type'
+        extra_fields.setdefault('user_is_active', True)  # Fixed: ensure active
 
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
@@ -59,6 +60,15 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         db_table = 'users'
+
+    # Fix the is_active property to use the correct field name
+    @property
+    def is_active(self):
+        return self.user_is_active
+
+    @is_active.setter
+    def is_active(self, value):
+        self.user_is_active = value
 
     def __str__(self):
         return self.user_name
