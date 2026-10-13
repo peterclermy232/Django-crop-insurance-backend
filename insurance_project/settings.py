@@ -13,21 +13,36 @@ except ImportError:
     # python-dotenv not installed (production) - Railway provides env vars directly
     pass
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-in-production')
+def env_list(name, default=''):
+    """Comma-separated env var -> list, ignoring blanks, quotes and spaces."""
+    raw = os.environ.get(name, default).replace('"', '').replace(' ', '')
+    return [item for item in raw.split(',') if item]
+
 
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get(
-    "ALLOWED_HOSTS",
-    "localhost,127.0.0.1,web-production-39ac0.up.railway.app"
-).replace('"', '').replace(" ", "").split(",")
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if not DEBUG:
+        raise RuntimeError('SECRET_KEY environment variable must be set in production')
+    SECRET_KEY = 'insecure-local-development-key'
 
-CSRF_TRUSTED_ORIGINS = [
-    'https://web-production-39ac0.up.railway.app',
-    'https://cropinsurance.netlify.app',
-    'http://localhost:4200',
-    'http://localhost:3000',
-]
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
+
+# Render sets this automatically to the service's public hostname
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
+# Frontend origins allowed to call the API (e.g. the Netlify site)
+FRONTEND_ORIGINS = [origin.rstrip('/') for origin in env_list(
+    'CORS_ORIGINS',
+    'https://cropinsurance.netlify.app,http://localhost:4200',
+)]
+
+CSRF_TRUSTED_ORIGINS = list(FRONTEND_ORIGINS)
+if RENDER_EXTERNAL_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RENDER_EXTERNAL_HOSTNAME}')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -37,7 +52,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'corsheaders',  # Must be before django.contrib.staticfiles
+    'rest_framework_simplejwt.token_blacklist',  # required for logout
+    'corsheaders',
     'django_filters',
     'insurance',
 ]
@@ -74,17 +90,17 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'insurance_project.wsgi.application'
 
-# Database - NEON POSTGRESQL (works for both local dev and production)
+# Database: PostgreSQL via DATABASE_URL (Neon or Render Postgres), SQLite otherwise
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
-    # Parse the DATABASE_URL if it exists
     DATABASES = {
         'default': dj_database_url.config(
             default=DATABASE_URL,
             conn_max_age=600,
             conn_health_checks=True,
-            ssl_require=True,  # Neon requires SSL
+            # Neon needs SSL; Render's internal database URL does not support it
+            ssl_require=os.environ.get('DB_SSL_REQUIRE', 'true').lower() == 'true',
         )
     }
 else:
@@ -113,7 +129,10 @@ USE_TZ = True
 # Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -121,18 +140,13 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ============================================
-# CORS SETTINGS - FIXED
+# CORS
 # ============================================
 
-# For development, allow all origins
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
-    # For production, specify exact origins
-    CORS_ALLOWED_ORIGINS = [
-        'https://cropinsurance.netlify.app',
-        'https://web-production-39ac0.up.railway.app',
-    ]
+    CORS_ALLOWED_ORIGINS = FRONTEND_ORIGINS
 
 # Essential CORS settings
 CORS_ALLOW_CREDENTIALS = True

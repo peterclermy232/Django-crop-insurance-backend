@@ -17,7 +17,9 @@ class CountryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.request.query_params.get('all') == 'true':
+        # Only cap the list view; slicing breaks detail lookups (retrieve/update/delete
+        # would always 404 because a sliced queryset cannot be filtered).
+        if self.action != 'list' or self.request.query_params.get('all') == 'true':
             return queryset
         return queryset[:10]
 
@@ -28,7 +30,9 @@ class OrganizationTypeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
-        if self.request.query_params.get('all') == 'true':
+        # Only cap the list view; slicing breaks detail lookups (retrieve/update/delete
+        # would always 404 because a sliced queryset cannot be filtered).
+        if self.action != 'list' or self.request.query_params.get('all') == 'true':
             return queryset
         return queryset[:10]
 

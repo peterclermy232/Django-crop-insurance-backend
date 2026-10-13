@@ -15,6 +15,9 @@ class BankAccountSerializer(serializers.ModelSerializer):
 
 
 class FarmSerializer(serializers.ModelSerializer):
+    # Farmer.__str__ returns "first_name last_name"
+    farmer_name = serializers.CharField(source='farmer.__str__', read_only=True)
+
     class Meta:
         model = Farm
         fields = '__all__'

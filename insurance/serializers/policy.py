@@ -24,6 +24,16 @@ class QuotationSerializer(serializers.ModelSerializer):
         source='farmer.id_number',
         read_only=True
     )
+    farm_size = serializers.DecimalField(
+        source='farm.farm_size',
+        max_digits=10,
+        decimal_places=2,
+        read_only=True
+    )
+    unit_of_measure = serializers.CharField(
+        source='farm.unit_of_measure',
+        read_only=True
+    )
 
     class Meta:
         model = Quotation

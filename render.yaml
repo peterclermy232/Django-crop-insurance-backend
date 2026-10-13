@@ -1,0 +1,30 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Dashboard -> New -> Blueprint -> select this repository.
+services:
+  - type: web
+    name: crop-insurance-api
+    runtime: python
+    plan: free
+    buildCommand: ./build.sh
+    startCommand: gunicorn insurance_project.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.2
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+      # Neon (or any external Postgres) connection string. Set it in the dashboard.
+      - key: DATABASE_URL
+        sync: false
+      # Comma-separated frontend origins allowed to call the API
+      - key: CORS_ORIGINS
+        value: https://cropinsurance.netlify.app
+      # Optional: first admin account, created on the first deploy only
+      - key: DJANGO_SUPERUSER_USER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_USER_NAME
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false

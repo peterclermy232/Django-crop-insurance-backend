@@ -14,6 +14,9 @@ from insurance.serializers import (
 class CropViewSet(viewsets.ModelViewSet):
     queryset = Crop.objects.filter(deleted=False)
     serializer_class = CropSerializer
+    # Query params used by the frontend: ?search=, ?status=true, ?organisation=<id>
+    filterset_fields = ['status', 'organisation']
+    search_fields = ['crop']
 
     @action(detail=False, methods=['get'])
     def with_details(self, request):
@@ -33,6 +36,9 @@ class CropViewSet(viewsets.ModelViewSet):
 class CropVarietyViewSet(viewsets.ModelViewSet):
     queryset = CropVariety.objects.filter(deleted=False)
     serializer_class = CropVarietySerializer
+    # Query params used by the frontend: ?crop=<id>, ?organisation=<id>, ?status=true, ?search=
+    filterset_fields = ['crop', 'organisation', 'status']
+    search_fields = ['crop_variety', 'crop__crop']
 
     @action(detail=False, methods=['get'])
     def with_details(self, request):

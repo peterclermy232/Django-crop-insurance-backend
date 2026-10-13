@@ -37,21 +37,33 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = '__all__'
+        exclude = ['groups', 'user_permissions']
+        # Never return password hashes, and never let API clients set
+        # privilege flags directly.
         extra_kwargs = {
-            'user_password': {'write_only': True}
+            'password': {'write_only': True, 'required': False},
         }
+        read_only_fields = [
+            'is_superuser', 'is_staff', 'last_login', 'failed_logins',
+            'locked_till_date_time', 'reset_code',
+        ]
+
+    @staticmethod
+    def _pop_password(validated_data):
+        new_password = validated_data.pop('new_password', None)
+        password = validated_data.pop('password', None)
+        return new_password or password
 
     def create(self, validated_data):
-        new_password = validated_data.pop('new_password', None)
-        if new_password:
-            validated_data['user_password'] = make_password(new_password)
+        password = self._pop_password(validated_data)
+        # make_password(None) yields an unusable password
+        validated_data['password'] = make_password(password)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        new_password = validated_data.pop('new_password', None)
-        if new_password:
-            validated_data['user_password'] = make_password(new_password)
+        password = self._pop_password(validated_data)
+        if password:
+            validated_data['password'] = make_password(password)
         return super().update(instance, validated_data)
 
 

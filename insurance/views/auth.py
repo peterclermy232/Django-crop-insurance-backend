@@ -1,13 +1,20 @@
+import logging
+
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
 from django.utils import timezone
 
 from insurance.models import User, RoleType
 from insurance.serializers import UserSerializer
 from insurance.serializers.auth import RegistrationSerializer
+
+logger = logging.getLogger(__name__)
+
+ACCESS_TOKEN_SECONDS = int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds())
 
 
 class LoginView(APIView):
@@ -26,17 +33,16 @@ class LoginView(APIView):
 
         try:
             # Try to get user by email OR username
-            try:
-                user = User.objects.get(user_email=username)
-            except User.DoesNotExist:
-                user = User.objects.get(user_name=username)
+            user = (User.objects.filter(user_email__iexact=username).first()
+                    or User.objects.filter(user_name=username).first())
+            if user is None:
+                raise User.DoesNotExist
 
-            # Check if password is hashed or plain text
-            password_valid = False
-
-            if user.check_password(password):
-                password_valid = True
-            elif user.password == password:
+            password_valid = user.check_password(password)
+            # Legacy accounts stored with a plain-text password are upgraded on
+            # login. A stored hash is never accepted as a password.
+            if (not password_valid and user.password and '$' not in user.password
+                    and user.password == password):
                 password_valid = True
                 user.set_password(password)
                 user.save(update_fields=['password'])
@@ -56,7 +62,7 @@ class LoginView(APIView):
                     'token': str(refresh.access_token),
                     'refresh': str(refresh),
                     'user': UserSerializer(user).data,
-                    'expires_in': 3600
+                    'expires_in': ACCESS_TOKEN_SECONDS
                 }, status=status.HTTP_200_OK)
             else:
                 return Response(
@@ -68,9 +74,10 @@ class LoginView(APIView):
                 {'error': 'Invalid credentials'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        except Exception as e:
+        except Exception:
+            logger.exception('Login failed')
             return Response(
-                {'error': f'Login failed: {str(e)}'},
+                {'error': 'Login failed. Please try again later.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -192,7 +199,7 @@ class RefreshTokenView(APIView):
 
             return Response({
                 'token': access_token,
-                'expires_in': 3600
+                'expires_in': ACCESS_TOKEN_SECONDS
             }, status=status.HTTP_200_OK)
 
         except Exception:

@@ -5,6 +5,7 @@ class LossAssessor(models.Model):
     assessor_id = models.AutoField(primary_key=True)
     user = models.ForeignKey('User', on_delete=models.PROTECT)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
+    practice_number = models.CharField(max_length=100, null=True, blank=True)
     status = models.CharField(max_length=20, default='ACTIVE')
     date_time_added = models.DateTimeField(auto_now_add=True)
 
@@ -27,6 +28,8 @@ class Claim(models.Model):
     claim_date = models.DateTimeField(auto_now_add=True)
     approval_date = models.DateTimeField(null=True, blank=True)
     loss_details = models.JSONField(null=True, blank=True)
+    payment_reference = models.CharField(max_length=200, null=True, blank=True)
+    payment_date = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'claims'

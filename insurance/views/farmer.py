@@ -42,7 +42,7 @@ class FarmerViewSet(viewsets.ModelViewSet):
 
 
 class FarmViewSet(viewsets.ModelViewSet):
-    queryset = Farm.objects.all().order_by('-farm_id')
+    queryset = Farm.objects.select_related('farmer').order_by('-farm_id')
     serializer_class = FarmSerializer
 
     def get_queryset(self):

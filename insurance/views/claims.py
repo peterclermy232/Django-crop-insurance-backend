@@ -1,3 +1,5 @@
+from django.http import Http404
+from rest_framework.exceptions import APIException
 # insurance/views/claims.py
 import logging
 from rest_framework import viewsets
@@ -27,6 +29,17 @@ class LossAssessorViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if (Claim.objects.filter(loss_assessor=instance).exists()
+                or ClaimAssignment.objects.filter(loss_assessor=instance).exists()):
+            return Response(
+                {'detail': 'This loss assessor has claims assigned and cannot be deleted. '
+                           'Set the status to INACTIVE instead.'},
+                status=http_status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 class ClaimViewSet(viewsets.ModelViewSet):
@@ -153,6 +166,8 @@ class ClaimViewSet(viewsets.ModelViewSet):
                 headers=headers
             )
 
+        except (APIException, Http404):
+            raise
         except Exception as e:
             logger.error(f"❌ Unexpected error creating claim: {str(e)}", exc_info=True)
             return Response(
@@ -187,10 +202,19 @@ class ClaimViewSet(viewsets.ModelViewSet):
 
             serializer = self.get_serializer(instance, data=data, partial=partial)
             serializer.is_valid(raise_exception=True)
-            self.perform_update(serializer)
+            # Stamp the payment date when a claim is marked PAID without one
+            extra = {}
+            if (serializer.validated_data.get('status') == 'PAID'
+                    and not serializer.validated_data.get('payment_date')
+                    and not instance.payment_date):
+                extra['payment_date'] = timezone.now()
+            serializer.save(**extra)
 
             return Response(serializer.data)
 
+        except (APIException, Http404):
+            # Validation errors / not found keep their proper 4xx status
+            raise
         except Exception as e:
             logger.error(f"❌ Error updating claim: {str(e)}", exc_info=True)
             return Response(

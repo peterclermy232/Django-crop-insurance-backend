@@ -217,6 +217,58 @@ class RoleTypeViewSet(viewsets.ModelViewSet):
         role_names = roles.values_list('role_name', flat=True)
         return Response(list(role_names))
 
+    @action(detail=False, methods=['get'])
+    def statistics(self, request):
+        """Role counts (total/active/inactive/system/custom) - available to all"""
+        roles = self.get_queryset()
+        return Response({
+            'total': roles.count(),
+            'active': roles.filter(role_status='ACTIVE').count(),
+            'inactive': roles.filter(role_status='INACTIVE').count(),
+            'system': roles.filter(is_system_role=True).count(),
+            'custom': roles.filter(is_system_role=False).count(),
+        })
+
+    @action(detail=True, methods=['get'])
+    def users(self, request, pk=None):
+        """Users whose user_role matches this role's name"""
+        role = self.get_object()
+        users = User.objects.filter(user_role=role.role_name).order_by('user_id')
+        serializer = UserSerializer(users, many=True, context={'request': request})
+        return Response({
+            'role_id': role.role_id,
+            'role_name': role.role_name,
+            'count': users.count(),
+            'results': serializer.data,
+        })
+
+    def _set_role_status(self, request, new_status):
+        if not self.check_management_permission(request):
+            return Response(
+                {'error': 'You do not have permission to update roles'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        role = self.get_object()
+        if new_status == 'INACTIVE' and role.is_system_role:
+            return Response(
+                {'error': 'System roles cannot be deactivated'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        role.role_status = new_status
+        role.modified_by = request.user.user_id
+        role.save(update_fields=['role_status', 'modified_by', 'date_time_modified'])
+        return Response(self.get_serializer(role).data)
+
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        """Set role_status to ACTIVE - SUPERUSER/ADMIN only"""
+        return self._set_role_status(request, 'ACTIVE')
+
+    @action(detail=True, methods=['post'])
+    def deactivate(self, request, pk=None):
+        """Set role_status to INACTIVE - SUPERUSER/ADMIN only"""
+        return self._set_role_status(request, 'INACTIVE')
+
 
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
