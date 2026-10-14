@@ -1,7 +1,9 @@
 from django.db import models
 
+from .sync import SyncTrackedModel
 
-class Inspection(models.Model):
+
+class Inspection(SyncTrackedModel):
     INSPECTION_TYPES = [
         ('PRE_PLANTING', 'Pre-Planting'),
         ('MID_SEASON', 'Mid-Season'),
@@ -52,6 +54,8 @@ class Inspection(models.Model):
 class InspectionPhoto(models.Model):
     photo_id = models.AutoField(primary_key=True)
     inspection = models.ForeignKey(Inspection, on_delete=models.CASCADE, related_name='photos')
+    # Set by the mobile app so a retried upload doesn't store the photo twice
+    client_uuid = models.UUIDField(null=True, blank=True, unique=True)
     photo = models.ImageField(upload_to='inspection_photos/%Y/%m/%d/')
     caption = models.CharField(max_length=200, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
@@ -68,6 +72,8 @@ class InspectionPhoto(models.Model):
 class ClaimPhoto(models.Model):
     photo_id = models.AutoField(primary_key=True)
     claim = models.ForeignKey('Claim', on_delete=models.CASCADE, related_name='photos')
+    # Set by the mobile app so a retried upload doesn't store the photo twice
+    client_uuid = models.UUIDField(null=True, blank=True, unique=True)
     photo = models.ImageField(upload_to='claim_photos/%Y/%m/%d/')
     caption = models.CharField(max_length=200, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)

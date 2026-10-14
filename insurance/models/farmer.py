@@ -1,7 +1,9 @@
 from django.db import models
 
+from .sync import SyncTrackedModel
 
-class Farmer(models.Model):
+
+class Farmer(SyncTrackedModel):
     farmer_id = models.AutoField(primary_key=True)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     country = models.ForeignKey('Country', on_delete=models.PROTECT, null=True, blank=True)
@@ -13,6 +15,9 @@ class Farmer(models.Model):
     gender = models.CharField(max_length=10, null=True, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
     farmer_category = models.CharField(max_length=50, null=True, blank=True)
+    registration_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    registration_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    photo = models.ImageField(upload_to='farmer_photos/%Y/%m/', null=True, blank=True)
     status = models.CharField(max_length=20, default='ACTIVE')
     date_time_added = models.DateTimeField(auto_now_add=True)
 
@@ -23,7 +28,7 @@ class Farmer(models.Model):
         return f"{self.first_name} {self.last_name}"
 
 
-class Farm(models.Model):
+class Farm(SyncTrackedModel):
     farm_id = models.AutoField(primary_key=True)
     farmer = models.ForeignKey(Farmer, on_delete=models.PROTECT, related_name='farms')
     farm_name = models.CharField(max_length=200)
@@ -32,6 +37,8 @@ class Farm(models.Model):
     location_province = models.CharField(max_length=100, null=True, blank=True)
     location_district = models.CharField(max_length=100, null=True, blank=True)
     location_sector = models.CharField(max_length=100, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     status = models.CharField(max_length=20, default='ACTIVE')
     date_time_added = models.DateTimeField(auto_now_add=True)
 

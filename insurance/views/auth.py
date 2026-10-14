@@ -4,6 +4,9 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.exceptions import ValidationError
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from django.utils import timezone
@@ -181,29 +184,34 @@ class LogoutView(APIView):
 
 
 class RefreshTokenView(APIView):
-    """Refresh access token using refresh token"""
+    """
+    Exchange a refresh token for a new access token.
+
+    Refresh tokens are rotated (ROTATE_REFRESH_TOKENS): the response carries a
+    new refresh token and the old one is blacklisted, so a client that refreshes
+    at least once per refresh lifetime stays signed in indefinitely.
+    """
     permission_classes = [AllowAny]
 
     def post(self, request):
-        refresh_token = request.data.get('refresh')
-
-        if not refresh_token:
+        if not request.data.get('refresh'):
             return Response(
                 {'error': 'Refresh token is required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        serializer = TokenRefreshSerializer(data={'refresh': request.data['refresh']})
         try:
-            refresh = RefreshToken(refresh_token)
-            access_token = str(refresh.access_token)
-
-            return Response({
-                'token': access_token,
-                'expires_in': ACCESS_TOKEN_SECONDS
-            }, status=status.HTTP_200_OK)
-
-        except Exception:
+            serializer.is_valid(raise_exception=True)
+        except (TokenError, ValidationError):
             return Response(
                 {'error': 'Invalid or expired refresh token'},
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
+        data = serializer.validated_data
+        return Response({
+            'token': data['access'],
+            'refresh': data.get('refresh', request.data['refresh']),
+            'expires_in': ACCESS_TOKEN_SECONDS
+        }, status=status.HTTP_200_OK)

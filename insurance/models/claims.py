@@ -1,5 +1,7 @@
 from django.db import models
 
+from .sync import SyncTrackedModel
+
 
 class LossAssessor(models.Model):
     assessor_id = models.AutoField(primary_key=True)
@@ -16,7 +18,7 @@ class LossAssessor(models.Model):
         return self.user.user_name
 
 
-class Claim(models.Model):
+class Claim(SyncTrackedModel):
     claim_id = models.AutoField(primary_key=True)
     farmer = models.ForeignKey('Farmer', on_delete=models.PROTECT)
     quotation = models.ForeignKey('Quotation', on_delete=models.PROTECT)

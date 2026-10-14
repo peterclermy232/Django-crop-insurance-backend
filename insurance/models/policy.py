@@ -1,7 +1,9 @@
 from django.db import models
 
+from .sync import SyncTrackedModel
 
-class Quotation(models.Model):
+
+class Quotation(SyncTrackedModel):
     quotation_id = models.AutoField(primary_key=True)
     farmer = models.ForeignKey('Farmer', on_delete=models.PROTECT)
     farm = models.ForeignKey('Farm', on_delete=models.PROTECT)
