@@ -170,11 +170,9 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
-    'access-control-allow-origin',
+    # Clients ask for public UUIDs instead of numeric ids (insurance/public_ids.py)
+    'x-id-format',
 ]
-
-# Allow all headers for easier debugging
-CORS_ALLOW_ALL_HEADERS = True
 
 # ============================================
 # REST FRAMEWORK
