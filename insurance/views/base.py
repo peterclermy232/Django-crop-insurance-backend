@@ -9,10 +9,11 @@ from insurance.serializers import (
     OrganizationTypeSerializer,
     OrganizationSerializer,
 )
-from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
+from insurance.scoping import IsPlatformAdminOrReadOnly, OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
 class CountryViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsPlatformAdminOrReadOnly]
     queryset = Country.objects.filter(country_is_deleted=False)
     serializer_class = CountrySerializer
 
@@ -26,6 +27,7 @@ class CountryViewSet(viewsets.ModelViewSet):
 
 
 class OrganizationTypeViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsPlatformAdminOrReadOnly]
     queryset = OrganizationType.objects.all().order_by('-organisation_type_id')
     serializer_class = OrganizationTypeSerializer
 

@@ -11,7 +11,7 @@ from insurance.serializers import (
 )
 import django_filters
 from insurance.public_ids import filter_by_id
-from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
+from insurance.scoping import IsPlatformAdminOrReadOnly, OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
 class PublicIdFilter(django_filters.CharFilter):
@@ -89,6 +89,7 @@ class CropVarietyViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
 
 
 class CoverTypeViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsPlatformAdminOrReadOnly]
     queryset = CoverType.objects.filter(deleted=False)
     serializer_class = CoverTypeSerializer
 

@@ -14,6 +14,8 @@ class Advisory(models.Model):
     sent_date_time = models.DateTimeField(null=True, blank=True)
     date_time_added = models.DateTimeField(auto_now_add=True)
     title = models.CharField(max_length=200, null=True, blank=True)
+    # Advisories go to an organisation's own farmers
+    organisation = models.ForeignKey('Organization', on_delete=models.PROTECT, null=True, blank=True)
 
     class Meta:
         db_table = 'advisories'

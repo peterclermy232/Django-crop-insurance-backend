@@ -1,20 +1,23 @@
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.relations import ManyRelatedField, RelatedField
 from rest_framework.serializers import ListSerializer
 
 from insurance.public_ids import PublicIdLookupMixin
 
 from insurance.models import (
-    BankAccount, Claim, ClaimAssignment, Crop, CropVariety, Farm, Farmer, InsuranceProduct,
+    Advisory, BankAccount, Claim, ClaimAssignment, Crop, CropVariety, Farm, Farmer, InsuranceProduct,
     Invoice, LossAssessor, NextOfKin, Organization, ProductCategory, Quotation,
     Season, Subsidy, User,
 )
 from insurance.models.inspection import ClaimPhoto, Inspection, InspectionPhoto
 
 # Model -> lookup from the model to the owning organisation's id.
-# Models not listed (countries, cover types, locations, advisories, weather) are shared.
+# Models not listed (countries, organisation types, cover types, locations, weather) are
+# platform-wide reference data: everyone reads them, only superusers change them.
 # Roles are handled in RoleTypeViewSet: system roles are shared, custom roles per organisation.
 ORG_PATHS = {
     Organization: 'organisation_id',
+    Advisory: 'organisation_id',
     User: 'organisation_id',
     Crop: 'organisation_id',
     CropVariety: 'organisation_id',
@@ -40,6 +43,16 @@ ORG_PATHS = {
 def is_platform_admin(user):
     return bool(user and user.is_authenticated
                 and (user.is_superuser or getattr(user, 'user_role', None) == 'SUPERUSER'))
+
+
+class IsPlatformAdminOrReadOnly(BasePermission):
+    """Shared reference data: any signed-in user may read it, only superusers change it."""
+    message = 'Only a superuser can change shared reference data.'
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return bool(request.user and request.user.is_authenticated)
+        return is_platform_admin(request.user)
 
 
 def scope_queryset(queryset, user):

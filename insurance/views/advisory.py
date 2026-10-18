@@ -8,10 +8,10 @@ from django.db.models import Count, Avg, Max, Min
 
 from insurance.models import Advisory, WeatherData, Farmer
 from insurance.serializers import AdvisorySerializer, WeatherDataSerializer
-from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
+from insurance.scoping import IsPlatformAdminOrReadOnly, OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class AdvisoryViewSet(viewsets.ModelViewSet):
+class AdvisoryViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Advisory.objects.all()
     serializer_class = AdvisorySerializer
 
@@ -20,7 +20,7 @@ class AdvisoryViewSet(viewsets.ModelViewSet):
         """Send advisory message"""
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            advisory = serializer.save()
+            advisory = serializer.save(**self.organisation_save_kwargs())
 
             if advisory.send_now:
                 advisory.status = 'SENT'
@@ -61,6 +61,7 @@ class AdvisoryViewSet(viewsets.ModelViewSet):
 
 
 class WeatherDataViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsPlatformAdminOrReadOnly]
     """ViewSet for managing weather data (historical and forecast)"""
     queryset = WeatherData.objects.all()
     serializer_class = WeatherDataSerializer

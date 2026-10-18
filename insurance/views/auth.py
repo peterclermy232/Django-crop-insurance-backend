@@ -145,14 +145,16 @@ class RegisterView(APIView):
 
     def get(self, request):
         """Get available roles for registration"""
-        roles = RoleType.objects.filter(role_status='ACTIVE').values(
+        public = RegistrationSerializer.PUBLIC_ROLES
+        roles = RoleType.objects.filter(role_status='ACTIVE', role_name__in=public).values(
             'role_name', 'role_description'
         )
-        
         return Response({
             'available_roles': list(roles),
             'default_role': 'CUSTOMER',
-            'restricted_roles': ['SUPERUSER', 'ADMIN']  # Require admin approval
+            # Every other role is created by an administrator
+            'restricted_roles': list(
+                RoleType.objects.exclude(role_name__in=public).values_list('role_name', flat=True)),
         })
 
 

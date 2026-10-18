@@ -4,7 +4,7 @@ from decimal import Decimal
 from rest_framework.test import APITestCase
 
 from insurance.models import (
-    Claim, Crop, Farm, Farmer, InsuranceProduct, LossAssessor, Organization, ProductCategory,
+    Advisory, AdministrativeUnit, Claim, Country, Crop, Farm, Farmer, InsuranceProduct, LossAssessor, Organization, ProductCategory,
     Quotation, RoleType, Season, User,
 )
 from insurance.models.insurance import CoverType
@@ -137,3 +137,44 @@ class TenancyTestCase(APITestCase):
         self.assertIn(r.status_code, (200, 201), r.json())
         user = User.objects.get(user_email='y@x.com')
         self.assertEqual((user.organisation.organisation_code, user.user_role), ('DEFAULT', 'CUSTOMER'))
+
+    def test_shared_reference_data_is_read_only_for_organisations(self):
+        ke = Country.objects.get(country_code='KE')
+        unit = AdministrativeUnit.objects.create(country=ke, level='COUNTY', name='Nakuru')
+        cases = [
+            ('/api/v1/countries/', f'/api/v1/countries/{ke.pk}/', {'country': 'Kenya', 'country_code': 'KE'}),
+            ('/api/v1/organisation_types/', None, {'organisation_type': 'Bank'}),
+            ('/api/v1/cover_types/', None, {'cover_type': 'Area yield'}),
+            ('/api/v1/weather_data/', None, {'location': 'Nakuru', 'data_type': 'FORECAST', 'value': '1',
+                                             'recorded_at': '2026-10-01T00:00:00Z'}),
+            ('/api/v1/administrative_units/', f'/api/v1/administrative_units/{unit.pk}/',
+             {'country': ke.pk, 'level': 'COUNTY', 'name': 'Kisumu'}),
+        ]
+        for user in (self.agent_a, self.admin_a):
+            self.client.force_authenticate(user)
+            for list_url, detail_url, payload in cases:
+                self.assertEqual(self.client.get(list_url).status_code, 200, list_url)
+                self.assertEqual(self.client.post(list_url, payload, format='json').status_code, 403, list_url)
+                if detail_url:
+                    self.assertEqual(self.client.patch(detail_url, payload, format='json').status_code, 403, detail_url)
+                    self.assertEqual(self.client.delete(detail_url).status_code, 403, detail_url)
+        self.client.force_authenticate(self.super)
+        for list_url, _, payload in cases[1:]:
+            self.assertEqual(self.client.post(list_url, payload, format='json').status_code, 201, list_url)
+
+    def test_advisories_belong_to_an_organisation(self):
+        other = Advisory.objects.create(organisation=self.org_b, message='For B farmers')
+        self.client.force_authenticate(self.agent_a)
+        r = self.client.post('/api/v1/advisories/send_advisory/', {'message': 'Plant now', 'send_now': True},
+                             format='json')
+        self.assertEqual(r.status_code, 201, r.json())
+        self.assertEqual(Advisory.objects.get(message='Plant now').organisation, self.org_a)
+        rows = self.ids('/api/v1/advisories/', self.agent_a)
+        self.assertEqual([r['message'] for r in rows], ['Plant now'])
+        self.assertEqual(self.client.get(f'/api/v1/advisories/{other.pk}/').status_code, 404)
+
+    def test_registration_roles_endpoint_lists_public_roles_only(self):
+        self.client.force_authenticate(None)
+        body = self.client.get('/api/v1/auth/register/').json()
+        self.assertEqual([r['role_name'] for r in body['available_roles']], ['CUSTOMER'])
+        self.assertIn('AGENT', body['restricted_roles'])

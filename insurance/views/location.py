@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from insurance.models import AdministrativeUnit
+from insurance.scoping import IsPlatformAdminOrReadOnly
 from insurance.serializers.location import (
     AdministrativeUnitSerializer,
     AdministrativeUnitBreadcrumbSerializer,
@@ -27,9 +28,10 @@ class AdministrativeUnitViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'code']
 
     def get_permissions(self):
+        # Locations are shared by every organisation: anyone reads, superusers edit
         if self.action in ['list', 'retrieve', 'children', 'path', 'levels']:
             return [AllowAny()]
-        return [IsAuthenticated()]
+        return [IsPlatformAdminOrReadOnly()]
 
     def get_queryset(self):
         queryset = (
