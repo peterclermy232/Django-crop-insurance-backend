@@ -1,31 +1,3 @@
-"""
-Offline sync endpoint for the field-officer mobile app.
-
-POST /api/v1/sync/
-{
-    "last_sync": "2026-10-14T08:00:00+03:00" | null,   # null = full download
-    "include_reference": true,                        # crops, products, seasons...
-    "changes": {
-        "farmers":     [{"client_uuid": "...", "first_name": ..., "next_of_kin": [...], "bank_accounts": [...]}],
-        "farms":       [{"client_uuid": "...", "farmer_uuid": "..." | "farmer": 12, ...}],
-        "quotations":  [{"client_uuid": "...", "farm_uuid": "...", "insurance_product": 3, "sum_insured": ...}],
-        "claims":      [{"client_uuid": "...", "quotation_uuid": "...", "estimated_loss_amount": ...}],
-        "inspections": [{"client_uuid": "...", "farm_uuid": "...", "inspection_type": ..., ...}]
-    }
-}
-
-Every record is upserted by its client_uuid, so re-sending the same payload
-after a dropped connection is safe. Parents can be referenced either by server
-id (``farmer``) or by the uuid of a record captured on the device
-(``farmer_uuid``); entity types are processed parents-first so a farmer, its
-farm and a quotation captured offline can all go up in one request.
-
-Each item gets its own result, and one bad item never blocks the others:
-    {"client_uuid", "status", "server_id", "record" | "errors"}
-where status is one of: created, updated, duplicate (farmer already registered;
-server_id is the existing farmer), locked (record has moved on in the office),
-pending_parent (linked record not synced yet; retry later) or error.
-"""
 import logging
 from decimal import Decimal, InvalidOperation
 
