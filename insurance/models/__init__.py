@@ -1,5 +1,6 @@
 # Base models
 from .base import Country, OrganizationType, Organization
+from .location import AdministrativeUnit
 
 # User models
 from .user import User, UserManager, RoleType, Notification, Message
@@ -30,6 +31,7 @@ __all__ = [
     'Country',
     'OrganizationType',
     'Organization',
+    'AdministrativeUnit',
 
     # User
     'User',

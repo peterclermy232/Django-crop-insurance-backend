@@ -11,6 +11,7 @@ from django.conf.urls.static import static
 from insurance.views.notifications import NotificationViewSet, MessageViewSet
 from insurance.views.upload import MediaUploadView
 from insurance.views.sync import SyncAPIView
+from insurance.views.location import AdministrativeUnitViewSet
 
 
 # Import all ViewSets
@@ -83,6 +84,7 @@ def api_root(request):
             },
             'resources': [
                 '/api/v1/countries/',
+                '/api/v1/administrative_units/',
                 '/api/v1/organisation_types/',
                 '/api/v1/organisations/',
                 '/api/v1/users/',
@@ -111,6 +113,7 @@ def api_root(request):
 # Create router and register all viewsets
 router = DefaultRouter()
 router.register(r'countries', CountryViewSet)
+router.register(r'administrative_units', AdministrativeUnitViewSet, basename='administrative-unit')
 router.register(r'organisation_types', OrganizationTypeViewSet)
 router.register(r'organisations', OrganizationViewSet)
 router.register(r'users', UserViewSet)

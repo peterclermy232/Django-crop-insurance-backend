@@ -9,6 +9,7 @@ python manage.py collectstatic --noinput
 python manage.py migrate --noinput
 python manage.py seed_data
 python manage.py seed_roles
+python manage.py import_kenya_locations
 
 # Create the first admin account once, if credentials were provided.
 if [[ -n "${DJANGO_SUPERUSER_USER_EMAIL:-}" && -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]]; then

@@ -37,6 +37,17 @@ class Farm(SyncTrackedModel):
     location_province = models.CharField(max_length=100, null=True, blank=True)
     location_district = models.CharField(max_length=100, null=True, blank=True)
     location_sector = models.CharField(max_length=100, null=True, blank=True)
+    # Lowest unit picked in each location cascade: county government (sub-county / ward)
+    # and national government (location / sub-location)
+    administrative_unit = models.ForeignKey(
+        'AdministrativeUnit', on_delete=models.PROTECT, null=True, blank=True, related_name='farms'
+    )
+    location_unit = models.ForeignKey(
+        'AdministrativeUnit', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='farms_by_location'
+    )
+    village = models.CharField(max_length=150, null=True, blank=True)
+    clan = models.CharField(max_length=150, null=True, blank=True)
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     status = models.CharField(max_length=20, default='ACTIVE')

@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.permissions import BasePermission, IsAuthenticated
@@ -9,10 +10,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from insurance.models import (
-    BankAccount, Claim, CoverType, Crop, CropVariety, Farm, Farmer,
+    AdministrativeUnit, BankAccount, Claim, CoverType, Crop, CropVariety, Farm, Farmer,
     InsuranceProduct, NextOfKin, ProductCategory, Quotation, Season,
 )
 from insurance.models.inspection import Inspection
+from insurance.models.location import FARM_UNITS_RELATED
 from insurance.serializers import (
     ClaimSerializer, CoverTypeSerializer, CropSerializer, CropVarietySerializer,
     FarmerSerializer, FarmSerializer, InsuranceProductSerializer,
@@ -57,7 +59,8 @@ ENTITIES = {
     'farms': EntitySpec(
         Farm, FarmSerializer,
         fields=['farm_name', 'farm_size', 'unit_of_measure', 'location_province',
-                'location_district', 'location_sector', 'latitude', 'longitude', 'status'],
+                'location_district', 'location_sector', 'administrative_unit', 'location_unit', 'village', 'clan',
+                'latitude', 'longitude', 'status'],
         parents={'farmer': Farmer},
     ),
     'quotations': EntitySpec(
@@ -127,7 +130,7 @@ class SyncAPIView(APIView):
             'updates': self._updates_since(since, user),
         }
         if request.data.get('include_reference', True):
-            response['reference'] = self._reference_data(user)
+            response['reference'] = self._reference_data(user, since)
         return Response(response)
 
     # ------------------------------------------------------------------ upload
@@ -288,8 +291,11 @@ class SyncAPIView(APIView):
         querysets = {
             'farmers': Farmer.objects.filter(organisation=org)
                 .select_related('organisation', 'country')
-                .prefetch_related('farms', 'next_of_kin', 'bank_accounts'),
-            'farms': Farm.objects.filter(farmer__organisation=org).select_related('farmer'),
+                .prefetch_related(
+                    Prefetch('farms', queryset=Farm.objects.select_related(*FARM_UNITS_RELATED)),
+                    'next_of_kin', 'bank_accounts',
+                ),
+            'farms': Farm.objects.filter(farmer__organisation=org).select_related('farmer', *FARM_UNITS_RELATED),
             'quotations': Quotation.objects.filter(farmer__organisation=org)
                 .select_related('farmer', 'farm', 'insurance_product'),
             'claims': Claim.objects.filter(farmer__organisation=org)
@@ -305,9 +311,9 @@ class SyncAPIView(APIView):
         return updates
 
     @staticmethod
-    def _reference_data(user):
+    def _reference_data(user, since):
         org = user.organisation
-        return {
+        reference = {
             'crops': CropSerializer(Crop.objects.filter(organisation=org), many=True).data,
             'crop_varieties': CropVarietySerializer(
                 CropVariety.objects.filter(organisation=org), many=True).data,
@@ -319,3 +325,11 @@ class SyncAPIView(APIView):
             'product_categories': ProductCategorySerializer(
                 ProductCategory.objects.filter(organisation=org), many=True).data,
         }
+        # The location tree is large, so it is only sent on a first sync or after it changes.
+        # Devices replace the whole list when the key is present and keep theirs when it isn't.
+        units = AdministrativeUnit.objects.filter(country_id=org.country_id)
+        if since is None or units.filter(date_time_modified__gt=since).exists():
+            reference['administrative_units'] = list(
+                units.filter(is_deleted=False).values('unit_id', 'parent', 'level', 'name')
+            )
+        return reference

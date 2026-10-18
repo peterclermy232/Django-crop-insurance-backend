@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from insurance.models import (
     # Base
-    Country, OrganizationType, Organization,
+    Country, OrganizationType, Organization, AdministrativeUnit,
     # User
     User, RoleType, Notification, Message,
     # Agriculture
@@ -28,6 +28,14 @@ class CountryAdmin(admin.ModelAdmin):
     list_display = ['country_id', 'country', 'country_code', 'country_is_deleted']
     search_fields = ['country', 'country_code']
     list_filter = ['country_is_deleted']
+
+
+@admin.register(AdministrativeUnit)
+class AdministrativeUnitAdmin(admin.ModelAdmin):
+    list_display = ['unit_id', 'name', 'level', 'parent', 'country', 'is_deleted']
+    search_fields = ['name', 'code']
+    list_filter = ['country', 'level', 'is_deleted']
+    autocomplete_fields = ['parent']
 
 
 @admin.register(OrganizationType)

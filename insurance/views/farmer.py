@@ -2,15 +2,18 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Q, Count
+from django.db.models import Q, Count, Prefetch
 
 from insurance.models import Farmer, Farm
+from insurance.models.location import FARM_UNITS_RELATED
 from insurance.serializers import FarmerSerializer, FarmSerializer
 
 
 class FarmerViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    queryset = Farmer.objects.all()
+    queryset = Farmer.objects.prefetch_related(
+        Prefetch('farms', queryset=Farm.objects.select_related(*FARM_UNITS_RELATED))
+    )
     serializer_class = FarmerSerializer
 
     def get_queryset(self):
@@ -42,7 +45,7 @@ class FarmerViewSet(viewsets.ModelViewSet):
 
 
 class FarmViewSet(viewsets.ModelViewSet):
-    queryset = Farm.objects.select_related('farmer').order_by('-farm_id')
+    queryset = Farm.objects.select_related('farmer', *FARM_UNITS_RELATED).order_by('-farm_id')
     serializer_class = FarmSerializer
 
     def get_queryset(self):
