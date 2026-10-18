@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 
@@ -18,6 +20,8 @@ class CoverType(models.Model):
 
 class ProductCategory(models.Model):
     product_category_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     cover_type = models.ForeignKey(CoverType, on_delete=models.PROTECT)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     product_category = models.CharField(max_length=100)
@@ -35,6 +39,8 @@ class ProductCategory(models.Model):
 
 class InsuranceProduct(models.Model):
     product_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     product_category = models.ForeignKey(ProductCategory, on_delete=models.PROTECT)
     season = models.ForeignKey('Season', on_delete=models.PROTECT)

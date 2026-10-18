@@ -1,7 +1,3 @@
-# insurance/views/financial.py
-"""
-Financial views for Subsidy and Invoice
-"""
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,16 +5,18 @@ from rest_framework import status
 from django.utils import timezone
 from django.db.models import Count, Sum
 
-from insurance.models import Subsidy, Invoice
+from insurance.models import Invoice, Organization, Subsidy
 from insurance.serializers import SubsidySerializer, InvoiceSerializer
+from insurance.public_ids import filter_by_id, resolve_pk
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class SubsidyViewSet(viewsets.ModelViewSet):
+class SubsidyViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Subsidy.objects.all().order_by('-subsidy_id')
     serializer_class = SubsidySerializer
 
 
-class InvoiceViewSet(viewsets.ModelViewSet):
+class InvoiceViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Invoice.objects.all().order_by('-invoice_id')
     serializer_class = InvoiceSerializer
 
@@ -30,7 +28,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter.upper())
         if organisation_id:
-            queryset = queryset.filter(organisation_id=organisation_id)
+            queryset = filter_by_id(queryset, 'organisation_id', Organization, organisation_id)
 
         return queryset.order_by('-date_time_added')
 
@@ -187,8 +185,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        invoices = Invoice.objects.filter(
-            invoice_id__in=invoice_ids,
+        invoices = self.get_queryset().filter(
+            pk__in=[pk for pk in (resolve_pk(Invoice, i) for i in invoice_ids) if pk is not None],
             status='PENDING'
         )
 
@@ -220,8 +218,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        invoices = Invoice.objects.filter(
-            invoice_id__in=invoice_ids,
+        invoices = self.get_queryset().filter(
+            pk__in=[pk for pk in (resolve_pk(Invoice, i) for i in invoice_ids) if pk is not None],
             status='APPROVED'
         )
 

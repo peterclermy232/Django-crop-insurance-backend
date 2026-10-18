@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from insurance.scoping import is_platform_admin
 from django.contrib.auth import authenticate
 from insurance.models import User, Organization, RoleType
 
@@ -29,6 +31,8 @@ class LoginSerializer(serializers.Serializer):
 
 
 class RegistrationSerializer(serializers.ModelSerializer):
+    PUBLIC_ROLES = ('CUSTOMER',)
+
     first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=True)
     user_phone_number = serializers.CharField(required=False, allow_blank=True)
@@ -65,24 +69,27 @@ class RegistrationSerializer(serializers.ModelSerializer):
         """Additional validation for role-based registration"""
         user_role = data.get('user_role', 'CUSTOMER')
         
-        # Optional: Add restrictions on who can register with certain roles
-        # For example, prevent public registration as SUPERUSER or ADMIN
-        restricted_roles = ['SUPERUSER', 'ADMIN']
-        
-        if user_role in restricted_roles:
-            # Check if request has an admin user
-            request = self.context.get('request')
-            if not request or not hasattr(request, 'user') or not request.user.is_authenticated:
-                raise serializers.ValidationError(
-                    f'Cannot register as {user_role}. Admin approval required.'
-                )
-            
-            # Only existing SUPERUSER or ADMIN can create these roles
-            if request.user.user_role not in ['SUPERUSER', 'ADMIN']:
-                raise serializers.ValidationError(
-                    f'Only administrators can register users with {user_role} role.'
-                )
-        
+        request = self.context.get('request')
+        actor = getattr(request, 'user', None)
+        is_admin = bool(actor and actor.is_authenticated and actor.user_role in ('SUPERUSER', 'ADMIN'))
+
+        # Public sign-up is for customers only; staff roles give access to an
+        # organisation's records, so an administrator has to create them.
+        if user_role not in self.PUBLIC_ROLES and not is_admin:
+            raise serializers.ValidationError(
+                f'Cannot register as {user_role}. Ask an administrator to create the account.'
+            )
+        if user_role == 'SUPERUSER' and not is_platform_admin(actor):
+            raise serializers.ValidationError('Only a superuser can register another superuser.')
+
+        # Choosing an organisation is likewise only for administrators, and an
+        # organisation admin can only add users to their own organisation.
+        org_id = data.get('organisation_id')
+        if org_id and not is_platform_admin(actor):
+            if not is_admin or org_id != actor.organisation_id:
+                data.pop('organisation_id')
+        if is_admin and not is_platform_admin(actor) and not data.get('organisation_id'):
+            data['organisation_id'] = actor.organisation_id
         return data
 
     def create(self, validated_data):

@@ -7,9 +7,11 @@ from django.db.models import Q, Count, Prefetch
 from insurance.models import Farmer, Farm
 from insurance.models.location import FARM_UNITS_RELATED
 from insurance.serializers import FarmerSerializer, FarmSerializer
+from insurance.public_ids import filter_by_id
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class FarmerViewSet(viewsets.ModelViewSet):
+class FarmerViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = Farmer.objects.prefetch_related(
         Prefetch('farms', queryset=Farm.objects.select_related(*FARM_UNITS_RELATED))
@@ -44,7 +46,7 @@ class FarmerViewSet(viewsets.ModelViewSet):
         })
 
 
-class FarmViewSet(viewsets.ModelViewSet):
+class FarmViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Farm.objects.select_related('farmer', *FARM_UNITS_RELATED).order_by('-farm_id')
     serializer_class = FarmSerializer
 
@@ -52,5 +54,5 @@ class FarmViewSet(viewsets.ModelViewSet):
         queryset = super().get_queryset()
         farmer_id = self.request.query_params.get('farmer_id')
         if farmer_id:
-            queryset = queryset.filter(farmer_id=farmer_id)
+            queryset = filter_by_id(queryset, 'farmer_id', Farmer, farmer_id)
         return queryset

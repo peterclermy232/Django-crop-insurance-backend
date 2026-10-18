@@ -15,11 +15,13 @@ from insurance.models import Claim, LossAssessor, ClaimAssignment, Farmer, Quota
 from insurance.serializers import (
     ClaimSerializer, LossAssessorSerializer, ClaimAssignmentSerializer
 )
+from insurance.public_ids import expose_id, filter_by_id, id_lookup, resolve_pk
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 logger = logging.getLogger(__name__)
 
 
-class LossAssessorViewSet(viewsets.ModelViewSet):
+class LossAssessorViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = LossAssessor.objects.all()
     serializer_class = LossAssessorSerializer
 
@@ -42,7 +44,7 @@ class LossAssessorViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class ClaimViewSet(viewsets.ModelViewSet):
+class ClaimViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Claim.objects.all().order_by('-claim_date')
     serializer_class = ClaimSerializer
     permission_classes = [IsAuthenticated]
@@ -55,7 +57,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         if farmer_id:
-            queryset = queryset.filter(farmer_id=farmer_id)
+            queryset = filter_by_id(queryset, 'farmer_id', Farmer, farmer_id)
 
         return queryset
 
@@ -85,7 +87,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
 
             # Validate farmer exists
             try:
-                farmer = Farmer.objects.get(farmer_id=data['farmer'])
+                farmer = scope_queryset(Farmer.objects.all(), request.user).get(**(id_lookup(Farmer, data['farmer']) or {'pk': None}))
                 logger.info(f"✅ Farmer found: {farmer.first_name} {farmer.last_name}")
             except Farmer.DoesNotExist:
                 logger.error(f"❌ Farmer not found: {data['farmer']}")
@@ -96,7 +98,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
 
             # Validate quotation exists
             try:
-                quotation = Quotation.objects.get(quotation_id=data['quotation'])
+                quotation = scope_queryset(Quotation.objects.all(), request.user).get(**(id_lookup(Quotation, data['quotation']) or {'pk': None}))
                 logger.info(f"✅ Quotation found: {quotation.policy_number}")
 
                 # Check quotation status
@@ -106,7 +108,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
                         {
                             'error': 'Invalid quotation status',
                             'details': f'Quotation status is {quotation.status}. Must be WRITTEN or PAID.',
-                            'quotation_id': quotation.quotation_id,
+                            'quotation_id': expose_id(quotation, request),
                             'current_status': quotation.status
                         },
                         status=http_status.HTTP_400_BAD_REQUEST
@@ -158,7 +160,7 @@ class ClaimViewSet(viewsets.ModelViewSet):
             return Response(
                 {
                     'message': 'Claim created successfully',
-                    'claim_id': claim.claim_id,
+                    'claim_id': expose_id(claim, request),
                     'claim_number': claim.claim_number,
                     'data': serializer.data
                 },
@@ -257,6 +259,9 @@ class ClaimViewSet(viewsets.ModelViewSet):
                 {'error': 'Assessor ID required'},
                 status=http_status.HTTP_400_BAD_REQUEST
             )
+        assessor_id = resolve_pk(LossAssessor, assessor_id, scope_queryset(LossAssessor.objects.all(), request.user))
+        if assessor_id is None:
+            return Response({'error': 'Loss assessor not found'}, status=http_status.HTTP_400_BAD_REQUEST)
 
         ClaimAssignment.objects.create(
             claim=claim,

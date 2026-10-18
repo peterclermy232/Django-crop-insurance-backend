@@ -1,4 +1,6 @@
+from django.http import Http404
 from rest_framework import viewsets, serializers
+from rest_framework.exceptions import APIException
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
@@ -9,9 +11,11 @@ from insurance.models import Quotation, Farmer, InsuranceProduct
 from insurance.serializers import (
     QuotationSerializer, FarmerSerializer, InsuranceProductSerializer
 )
+from insurance.public_ids import filter_by_id
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class QuotationViewSet(viewsets.ModelViewSet):
+class QuotationViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Quotation.objects.select_related(
         'farmer', 'farm', 'insurance_product'
     ).all().order_by('-quotation_id')
@@ -25,7 +29,7 @@ class QuotationViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         if farmer_id:
-            queryset = queryset.filter(farmer_id=farmer_id)
+            queryset = filter_by_id(queryset, 'farmer_id', Farmer, farmer_id)
 
         return queryset
 
@@ -47,6 +51,8 @@ class QuotationViewSet(viewsets.ModelViewSet):
                 {'detail': str(e), 'errors': e.detail},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        except (APIException, Http404):
+            raise
         except Exception as e:
             return Response(
                 {'detail': f'Error creating quotation: {str(e)}'},
@@ -70,6 +76,8 @@ class QuotationViewSet(viewsets.ModelViewSet):
                 {'detail': str(e), 'errors': e.detail},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        except (APIException, Http404):
+            raise
         except Exception as e:
             return Response(
                 {'detail': f'Error updating quotation: {str(e)}'},
@@ -118,6 +126,8 @@ class QuotationViewSet(viewsets.ModelViewSet):
             quotation.save()
 
             return Response(self.get_serializer(quotation).data)
+        except (APIException, Http404):
+            raise
         except Exception as e:
             return Response(
                 {'error': f'Failed to mark as paid: {str(e)}'},
@@ -156,6 +166,8 @@ class QuotationViewSet(viewsets.ModelViewSet):
                 'policy_number': quotation.policy_number,
                 'quotation': self.get_serializer(quotation).data
             })
+        except (APIException, Http404):
+            raise
         except Exception as e:
             return Response(
                 {'error': f'Failed to write policy: {str(e)}'},
@@ -166,9 +178,9 @@ class QuotationViewSet(viewsets.ModelViewSet):
     def with_details(self, request):
         """Return quotations with related data for frontend"""
         quotations = self.get_serializer(self.get_queryset(), many=True).data
-        farmers = FarmerSerializer(Farmer.objects.all(), many=True).data
+        farmers = FarmerSerializer(scope_queryset(Farmer.objects.all(), request.user), many=True).data
         products = InsuranceProductSerializer(
-            InsuranceProduct.objects.filter(status='ACTIVE'),
+            scope_queryset(InsuranceProduct.objects.filter(status='ACTIVE'), request.user),
             many=True
         ).data
 

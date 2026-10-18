@@ -11,6 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from django.utils import timezone
 
+from insurance.public_ids import expose_id
 from insurance.models import User, RoleType
 from insurance.serializers import UserSerializer
 from insurance.serializers.auth import RegistrationSerializer
@@ -64,7 +65,7 @@ class LoginView(APIView):
                 return Response({
                     'token': str(refresh.access_token),
                     'refresh': str(refresh),
-                    'user': UserSerializer(user).data,
+                    'user': UserSerializer(user, context={'request': request}).data,
                     'expires_in': ACCESS_TOKEN_SECONDS
                 }, status=status.HTTP_200_OK)
             else:
@@ -119,12 +120,12 @@ class RegisterView(APIView):
                 return Response({
                     'message': 'User registered successfully',
                     'user': {
-                        'user_id': user.user_id,
+                        'user_id': expose_id(user, request),
                         'user_name': user.user_name,
                         'user_email': user.user_email,
                         'user_role': user.user_role,
                         'user_status': user.user_status,
-                        'organisation_id': user.organisation.organisation_id,
+                        'organisation_id': expose_id(user.organisation, request),
                         'organisation_name': user.organisation.organisation_name,
                     },
                     'token': str(refresh.access_token),

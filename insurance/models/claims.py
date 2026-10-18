@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 from .sync import SyncTrackedModel
@@ -5,6 +7,8 @@ from .sync import SyncTrackedModel
 
 class LossAssessor(models.Model):
     assessor_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     user = models.ForeignKey('User', on_delete=models.PROTECT)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     practice_number = models.CharField(max_length=100, null=True, blank=True)
@@ -20,6 +24,8 @@ class LossAssessor(models.Model):
 
 class Claim(SyncTrackedModel):
     claim_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     farmer = models.ForeignKey('Farmer', on_delete=models.PROTECT)
     quotation = models.ForeignKey('Quotation', on_delete=models.PROTECT)
     loss_assessor = models.ForeignKey(LossAssessor, on_delete=models.PROTECT, null=True, blank=True)

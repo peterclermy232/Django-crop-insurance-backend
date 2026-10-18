@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.utils import timezone
@@ -36,6 +38,8 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     user_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     country = models.ForeignKey('Country', on_delete=models.PROTECT, null=True, blank=True)
     user_role = models.CharField(max_length=50, default='API USER')
@@ -76,6 +80,8 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 class RoleType(models.Model):
     role_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     role_name = models.CharField(max_length=100, unique=True)
     role_description = models.TextField(null=True, blank=True)

@@ -1,4 +1,3 @@
-# insurance/views/user.py
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -17,9 +16,12 @@ from insurance.serializers import (
 from insurance.models import Notification, Message
 from insurance.serializers import NotificationSerializer, MessageSerializer
 from insurance.permissions import CanManageUsers
+from django.db.models import Q
+from insurance.public_ids import PublicIdLookupMixin, expose_id, id_lookup
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class UserViewSet(viewsets.ModelViewSet):
+class UserViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, CanManageUsers]
@@ -29,7 +31,7 @@ class UserViewSet(viewsets.ModelViewSet):
         """Return users with related organizations and countries"""
         users = self.get_serializer(self.get_queryset(), many=True).data
         orgs = OrganizationSerializer(
-            Organization.objects.filter(organisation_is_deleted=False),
+            scope_queryset(Organization.objects.filter(organisation_is_deleted=False), request.user),
             many=True
         ).data
         countries = CountrySerializer(
@@ -76,7 +78,7 @@ class UserViewSet(viewsets.ModelViewSet):
             )
 
 
-class RoleTypeViewSet(viewsets.ModelViewSet):
+class RoleTypeViewSet(PublicIdLookupMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing role types
     - SUPERUSER and ADMIN can manage roles
@@ -103,6 +105,13 @@ class RoleTypeViewSet(viewsets.ModelViewSet):
         user = request.user
         if not user or not user.is_authenticated:
             return False
+
+        # System roles apply to every organisation, so only a superuser may change them
+        if self.kwargs.get(self.lookup_field) and not is_platform_admin(user):
+            lookup = id_lookup(RoleType, self.kwargs[self.lookup_field])
+            role = self.get_queryset().filter(**lookup).first() if lookup else None
+            if role is not None and role.is_system_role:
+                return False
         
         # SUPERUSER has all permissions
         if hasattr(user, 'user_role') and user.user_role == 'SUPERUSER':
@@ -119,17 +128,11 @@ class RoleTypeViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = RoleType.objects.all().order_by('role_name')
         
-        # SUPERUSER can see all roles
-        if hasattr(user, 'user_role') and user.user_role == 'SUPERUSER':
+        # System roles are shared by every organisation; custom roles belong to one.
+        # Only SUPERUSER and ADMIN can edit them (checked in create/update/delete).
+        if is_platform_admin(user):
             return queryset
-        
-        # ADMIN can see roles in their organization
-        if hasattr(user, 'user_role') and user.user_role == 'ADMIN':
-            return queryset.filter(organisation=user.organisation)
-        
-        # Others can see all roles (for dropdowns in user management)
-        # But cannot edit them (checked in create/update/delete)
-        return queryset
+        return queryset.filter(Q(is_system_role=True) | Q(organisation=user.organisation_id))
     
     def create(self, request, *args, **kwargs):
         """Only SUPERUSER and ADMIN can create roles"""
@@ -187,7 +190,7 @@ class RoleTypeViewSet(viewsets.ModelViewSet):
             )
         
         # Check if any users have this role
-        user_count = User.objects.filter(user_role=instance.role_name).count()
+        user_count = User.objects.filter(user_role=instance.role_name, organisation=instance.organisation).count()
         if user_count > 0:
             return Response(
                 {'error': f'Cannot delete role. {user_count} user(s) have this role.'},
@@ -233,10 +236,10 @@ class RoleTypeViewSet(viewsets.ModelViewSet):
     def users(self, request, pk=None):
         """Users whose user_role matches this role's name"""
         role = self.get_object()
-        users = User.objects.filter(user_role=role.role_name).order_by('user_id')
+        users = scope_queryset(User.objects.filter(user_role=role.role_name), request.user).order_by('user_id')
         serializer = UserSerializer(users, many=True, context={'request': request})
         return Response({
-            'role_id': role.role_id,
+            'role_id': expose_id(role, request),
             'role_name': role.role_name,
             'count': users.count(),
             'results': serializer.data,

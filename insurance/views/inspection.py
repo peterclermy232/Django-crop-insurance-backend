@@ -4,13 +4,16 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.db.models import Count
 
+from insurance.models import Farm, User
 from insurance.models.inspection import Inspection, InspectionPhoto, ClaimPhoto
 from insurance.serializers.inspection import (
     InspectionSerializer, InspectionPhotoSerializer, ClaimPhotoSerializer
 )
+from insurance.public_ids import filter_by_id
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class InspectionViewSet(viewsets.ModelViewSet):
+class InspectionViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Inspection.objects.all()
     serializer_class = InspectionSerializer
 
@@ -21,11 +24,11 @@ class InspectionViewSet(viewsets.ModelViewSet):
         farm_id = self.request.query_params.get('farm_id')
 
         if inspector_id:
-            queryset = queryset.filter(inspector_id=inspector_id)
+            queryset = filter_by_id(queryset, 'inspector_id', User, inspector_id)
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         if farm_id:
-            queryset = queryset.filter(farm_id=farm_id)
+            queryset = filter_by_id(queryset, 'farm_id', Farm, farm_id)
 
         return queryset.select_related('farm', 'inspector')
 

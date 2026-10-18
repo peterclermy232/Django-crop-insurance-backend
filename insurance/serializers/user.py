@@ -3,6 +3,8 @@ from django.contrib.auth.hashers import make_password
 from insurance.models import User, RoleType, Notification, Message
 from django.db.models import Q
 
+from insurance.scoping import is_platform_admin
+
 
 class UserDetailSerializer(serializers.ModelSerializer):
     organisation_name = serializers.CharField(
@@ -47,6 +49,13 @@ class UserSerializer(serializers.ModelSerializer):
             'is_superuser', 'is_staff', 'last_login', 'failed_logins',
             'locked_till_date_time', 'reset_code',
         ]
+
+    def validate_user_role(self, value):
+        # SUPERUSER sees every organisation, so only an existing superuser may grant it
+        request = self.context.get('request')
+        if (value or '').upper() == 'SUPERUSER' and not is_platform_admin(getattr(request, 'user', None)):
+            raise serializers.ValidationError('Only a superuser can assign the SUPERUSER role.')
+        return value
 
     @staticmethod
     def _pop_password(validated_data):

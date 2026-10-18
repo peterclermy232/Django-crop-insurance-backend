@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 from .sync import SyncTrackedModel
@@ -19,6 +21,8 @@ class Inspection(SyncTrackedModel):
     ]
 
     inspection_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     farm = models.ForeignKey('Farm', on_delete=models.PROTECT)
     inspector = models.ForeignKey('User', on_delete=models.PROTECT)
     inspection_type = models.CharField(max_length=20, choices=INSPECTION_TYPES)

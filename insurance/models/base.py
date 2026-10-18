@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 
@@ -44,6 +46,8 @@ class OrganizationType(models.Model):
 
 class Organization(models.Model):
     organisation_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     country = models.ForeignKey(Country, on_delete=models.PROTECT, db_column='country_id')
     organisation_type = models.ForeignKey(OrganizationType, on_delete=models.PROTECT, db_column='organisation_type_id')
     organisation_code = models.CharField(max_length=50, unique=True)

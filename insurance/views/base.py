@@ -1,7 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, BasePermission
 
 from insurance.models import Country, OrganizationType, Organization
 from insurance.serializers import (
@@ -9,6 +9,7 @@ from insurance.serializers import (
     OrganizationTypeSerializer,
     OrganizationSerializer,
 )
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
 class CountryViewSet(viewsets.ModelViewSet):
@@ -37,7 +38,14 @@ class OrganizationTypeViewSet(viewsets.ModelViewSet):
         return queryset[:10]
 
 
-class OrganizationViewSet(viewsets.ModelViewSet):
+class IsPlatformAdmin(BasePermission):
+    message = 'Only a superuser can do this.'
+
+    def has_permission(self, request, view):
+        return is_platform_admin(request.user)
+
+
+class OrganizationViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing organizations.
     Provides CRUD operations: list, retrieve, create, update, partial_update, destroy
@@ -48,11 +56,14 @@ class OrganizationViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """
-        Allow unauthenticated access to list and retrieve operations
-        Require authentication for create, update, and delete operations
+        Anyone may list/retrieve (anonymous callers get an empty list, everyone else
+        only their own organisation); creating and deleting organisations is for
+        platform superusers, and admins may edit their own organisation.
         """
         if self.action in ['list', 'retrieve']:
             permission_classes = [AllowAny]
+        elif self.action in ['create', 'destroy']:
+            permission_classes = [IsPlatformAdmin]
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]

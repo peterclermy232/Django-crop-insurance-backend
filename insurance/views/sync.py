@@ -15,6 +15,7 @@ from insurance.models import (
 )
 from insurance.models.inspection import Inspection
 from insurance.models.location import FARM_UNITS_RELATED
+from insurance.public_ids import expose_id, has_public_id, id_lookup
 from insurance.serializers import (
     ClaimSerializer, CoverTypeSerializer, CropSerializer, CropVarietySerializer,
     FarmerSerializer, FarmSerializer, InsuranceProductSerializer,
@@ -97,6 +98,11 @@ def in_org(name, obj, org):
     return OWNER[name](obj).organisation_id == org.pk
 
 
+def ref(obj):
+    """How to name a record in serializer input: its public id when it has one."""
+    return str(obj.public_id) if has_public_id(type(obj)) else obj.pk
+
+
 class ItemError(Exception):
     def __init__(self, errors, status='error', server_id=None):
         super().__init__(str(errors))
@@ -145,14 +151,15 @@ class SyncAPIView(APIView):
         try:
             with transaction.atomic():
                 status, obj = self._upsert(name, spec, item, user)
-            return {'client_uuid': client_uuid, 'status': status, 'server_id': obj.pk,
-                    'record': spec.serializer(obj).data}
+            return {'client_uuid': client_uuid, 'status': status, 'server_id': expose_id(obj, self.request),
+                    'record': self._serialize(spec, obj)}
         except ItemError as e:
-            result = {'client_uuid': client_uuid, 'status': e.status, 'server_id': e.server_id,
-                      'errors': e.errors}
+            result = {'client_uuid': client_uuid, 'status': e.status, 'server_id': None, 'errors': e.errors}
             if e.server_id is not None:
                 # duplicate / locked: hand back the server copy so the device can adopt it
-                result['record'] = spec.serializer(spec.model.objects.get(pk=e.server_id)).data
+                existing = spec.model.objects.get(pk=e.server_id)
+                result['server_id'] = expose_id(existing, self.request)
+                result['record'] = self._serialize(spec, existing)
             return result
         except IntegrityError as e:
             logger.warning('Sync integrity error on %s %s: %s', name, client_uuid, e)
@@ -168,9 +175,11 @@ class SyncAPIView(APIView):
         data = {k: item[k] for k in spec.fields if k in item}
         data['client_uuid'] = item['client_uuid']
 
+        resolved = {}
         for field, parent_model in spec.parents.items():
             if item.get(f'{field}_uuid') or item.get(field):
-                data[field] = self._resolve_parent(field, parent_model, item, org)
+                resolved[field] = self._resolve_parent(field, parent_model, item, org)
+                data[field] = ref(resolved[field])
 
         instance = spec.model.objects.filter(client_uuid=item['client_uuid']).first()
         if instance is not None and not in_org(name, instance, org):
@@ -191,8 +200,9 @@ class SyncAPIView(APIView):
                 {'status': [f'This record is {instance.status} and can no longer be changed from the field.']},
                 status='locked', server_id=instance.pk)
 
-        self._apply_server_values(name, data, instance, user)
-        serializer = spec.serializer(instance, data=data, partial=instance is not None)
+        self._apply_server_values(name, data, instance, user, resolved)
+        serializer = spec.serializer(instance, data=data, partial=instance is not None,
+                                     context={'request': self.request})
         if not serializer.is_valid():
             raise ItemError(serializer.errors)
         extra = {'created_by': user} if instance is None else {}
@@ -207,33 +217,42 @@ class SyncAPIView(APIView):
             self._save_farmer_children(obj, item)
         return ('updated' if instance is not None else 'created'), obj
 
+    def _serialize(self, spec, obj):
+        return spec.serializer(obj, context={'request': self.request}).data
+
     @staticmethod
     def _resolve_parent(field, parent_model, item, org):
+        """Parent by the device's uuid, or by its server id (public UUID or number)."""
         uuid = item.get(f'{field}_uuid')
-        lookup = {'client_uuid': uuid} if uuid else {'pk': item.get(field)}
-        parent = parent_model.objects.filter(**lookup).first()
+        lookup = {'client_uuid': uuid} if uuid else id_lookup(parent_model, item.get(field))
+        parent = parent_model.objects.filter(**lookup).first() if lookup else None
         if parent is None or not in_org(f'{field}s', parent, org):
             # Usually the parent failed in this same request; the device retries later
             raise ItemError({field: ['Linked record has not been synced yet.']}, status='pending_parent')
-        return parent.pk
+        return parent
 
     @staticmethod
-    def _apply_server_values(name, data, instance, user):
+    def _apply_server_values(name, data, instance, user, resolved):
         """Values the server decides; never trusted from the device."""
         data.pop('created_by', None)
         if name == 'farmers' and instance is None:
-            data['organisation'] = user.organisation_id
+            data['organisation'] = ref(user.organisation)
 
         if name == 'quotations':
-            product_id = data.get('insurance_product') or getattr(instance, 'insurance_product_id', None)
-            product = InsuranceProduct.objects.filter(pk=product_id, status='ACTIVE').first()
+            if data.get('insurance_product'):
+                lookup = id_lookup(InsuranceProduct, data['insurance_product']) or {'pk': None}
+            else:
+                lookup = {'pk': getattr(instance, 'insurance_product_id', None)}
+            product = InsuranceProduct.objects.filter(
+                **lookup, status='ACTIVE', organisation=user.organisation_id).first()
             if product is None:
                 raise ItemError({'insurance_product': ['Unknown or inactive insurance product.']})
-            if 'farm' in data:
-                farm = Farm.objects.get(pk=data['farm'])
-                if 'farmer' in data and data['farmer'] != farm.farmer_id:
+            data['insurance_product'] = ref(product)
+            if 'farm' in resolved:
+                farm = resolved['farm']
+                if 'farmer' in resolved and resolved['farmer'].pk != farm.farmer_id:
                     raise ItemError({'farm': ["This farm doesn't belong to the selected farmer."]})
-                data['farmer'] = farm.farmer_id
+                data['farmer'] = ref(farm.farmer)
             sum_insured = data.get('sum_insured', getattr(instance, 'sum_insured', None))
             try:
                 premium = Decimal(str(sum_insured)) * product.average_premium_rate / Decimal('100')
@@ -244,16 +263,16 @@ class SyncAPIView(APIView):
                 data['status'] = 'OPEN'
 
         if name == 'claims':
-            if 'quotation' in data:
-                quotation = Quotation.objects.get(pk=data['quotation'])
-                if 'farmer' in data and data['farmer'] != quotation.farmer_id:
+            if 'quotation' in resolved:
+                quotation = resolved['quotation']
+                if 'farmer' in resolved and resolved['farmer'].pk != quotation.farmer_id:
                     raise ItemError({'quotation': ["This policy doesn't belong to the selected farmer."]})
-                data['farmer'] = quotation.farmer_id
+                data['farmer'] = ref(quotation.farmer)
             if instance is None:
                 data['status'] = 'OPEN'
 
         if name == 'inspections' and instance is None:
-            data['inspector'] = user.pk
+            data['inspector'] = ref(user)
 
     @staticmethod
     def _save_farmer_children(farmer, item):
@@ -285,8 +304,7 @@ class SyncAPIView(APIView):
             parsed = timezone.make_aware(parsed)
         return parsed
 
-    @staticmethod
-    def _updates_since(since, user):
+    def _updates_since(self, since, user):
         org = user.organisation
         querysets = {
             'farmers': Farmer.objects.filter(organisation=org)
@@ -307,23 +325,23 @@ class SyncAPIView(APIView):
         for name, queryset in querysets.items():
             if since is not None:
                 queryset = queryset.filter(updated_at__gt=since)
-            updates[name] = ENTITIES[name].serializer(queryset, many=True).data
+            updates[name] = ENTITIES[name].serializer(queryset, many=True, context={'request': self.request}).data
         return updates
 
-    @staticmethod
-    def _reference_data(user, since):
+    def _reference_data(self, user, since):
         org = user.organisation
+        ctx = {'context': {'request': self.request}}
         reference = {
-            'crops': CropSerializer(Crop.objects.filter(organisation=org), many=True).data,
+            'crops': CropSerializer(Crop.objects.filter(organisation=org), many=True, **ctx).data,
             'crop_varieties': CropVarietySerializer(
-                CropVariety.objects.filter(organisation=org), many=True).data,
-            'seasons': SeasonSerializer(Season.objects.filter(organisation=org), many=True).data,
+                CropVariety.objects.filter(organisation=org), many=True, **ctx).data,
+            'seasons': SeasonSerializer(Season.objects.filter(organisation=org), many=True, **ctx).data,
             'insurance_products': InsuranceProductSerializer(
                 InsuranceProduct.objects.filter(organisation=org, status='ACTIVE')
-                .select_related('crop', 'season', 'crop_variety', 'product_category'), many=True).data,
-            'cover_types': CoverTypeSerializer(CoverType.objects.all(), many=True).data,
+                .select_related('crop', 'season', 'crop_variety', 'product_category'), many=True, **ctx).data,
+            'cover_types': CoverTypeSerializer(CoverType.objects.all(), many=True, **ctx).data,
             'product_categories': ProductCategorySerializer(
-                ProductCategory.objects.filter(organisation=org), many=True).data,
+                ProductCategory.objects.filter(organisation=org), many=True, **ctx).data,
         }
         # The location tree is large, so it is only sent on a first sync or after it changes.
         # Devices replace the whole list when the key is present and keep theirs when it isn't.

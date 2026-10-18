@@ -1,8 +1,12 @@
+import uuid
+
 from django.db import models
 
 
 class Crop(models.Model):
     crop_id = models.AutoField(primary_key=True, db_column='cropId')
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT, db_column='organisationId')
     crop = models.CharField(max_length=100)
     icon = models.CharField(max_length=200, null=True, blank=True)
@@ -21,6 +25,8 @@ class Crop(models.Model):
 
 class CropVariety(models.Model):
     crop_variety_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     crop = models.ForeignKey(Crop, on_delete=models.PROTECT)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     crop_variety = models.CharField(max_length=100)
@@ -38,6 +44,8 @@ class CropVariety(models.Model):
 
 class Season(models.Model):
     season_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     season = models.CharField(max_length=100)
     start_date = models.DateField(null=True, blank=True)

@@ -9,13 +9,44 @@ from insurance.serializers import (
     CropSerializer, CropVarietySerializer, CoverTypeSerializer,
     ProductCategorySerializer, SeasonSerializer, OrganizationSerializer,
 )
+import django_filters
+from insurance.public_ids import filter_by_id
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class CropViewSet(viewsets.ModelViewSet):
+class PublicIdFilter(django_filters.CharFilter):
+    """`?crop=<id>` filter that takes a public UUID or a numeric id."""
+
+    def __init__(self, model, *args, **kwargs):
+        self.related_model = model
+        super().__init__(*args, **kwargs)
+
+    def filter(self, qs, value):
+        return filter_by_id(qs, f'{self.field_name}_id', self.related_model, value) if value else qs
+
+
+class CropFilter(django_filters.FilterSet):
+    organisation = PublicIdFilter(Organization, field_name='organisation')
+
+    class Meta:
+        model = Crop
+        fields = ['status']
+
+
+class CropVarietyFilter(django_filters.FilterSet):
+    organisation = PublicIdFilter(Organization, field_name='organisation')
+    crop = PublicIdFilter(Crop, field_name='crop')
+
+    class Meta:
+        model = CropVariety
+        fields = ['status']
+
+
+class CropViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Crop.objects.filter(deleted=False)
     serializer_class = CropSerializer
     # Query params used by the frontend: ?search=, ?status=true, ?organisation=<id>
-    filterset_fields = ['status', 'organisation']
+    filterset_class = CropFilter
     search_fields = ['crop']
 
     @action(detail=False, methods=['get'])
@@ -23,7 +54,7 @@ class CropViewSet(viewsets.ModelViewSet):
         """Return crops with organizations"""
         crops = self.get_serializer(self.get_queryset(), many=True).data
         orgs = OrganizationSerializer(
-            Organization.objects.filter(organisation_is_deleted=False),
+            scope_queryset(Organization.objects.filter(organisation_is_deleted=False), request.user),
             many=True
         ).data
 
@@ -33,20 +64,20 @@ class CropViewSet(viewsets.ModelViewSet):
         })
 
 
-class CropVarietyViewSet(viewsets.ModelViewSet):
+class CropVarietyViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = CropVariety.objects.filter(deleted=False)
     serializer_class = CropVarietySerializer
     # Query params used by the frontend: ?crop=<id>, ?organisation=<id>, ?status=true, ?search=
-    filterset_fields = ['crop', 'organisation', 'status']
+    filterset_class = CropVarietyFilter
     search_fields = ['crop_variety', 'crop__crop']
 
     @action(detail=False, methods=['get'])
     def with_details(self, request):
         """Return crop varieties with crops and organizations"""
         varieties = self.get_serializer(self.get_queryset(), many=True).data
-        crops = CropSerializer(Crop.objects.filter(deleted=False), many=True).data
+        crops = CropSerializer(scope_queryset(Crop.objects.filter(deleted=False), request.user), many=True).data
         orgs = OrganizationSerializer(
-            Organization.objects.filter(organisation_is_deleted=False),
+            scope_queryset(Organization.objects.filter(organisation_is_deleted=False), request.user),
             many=True
         ).data
 
@@ -62,7 +93,7 @@ class CoverTypeViewSet(viewsets.ModelViewSet):
     serializer_class = CoverTypeSerializer
 
 
-class ProductCategoryViewSet(viewsets.ModelViewSet):
+class ProductCategoryViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = ProductCategory.objects.filter(deleted=False)
     serializer_class = ProductCategorySerializer
 
@@ -75,7 +106,7 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
             many=True
         ).data
         orgs = OrganizationSerializer(
-            Organization.objects.filter(organisation_is_deleted=False),
+            scope_queryset(Organization.objects.filter(organisation_is_deleted=False), request.user),
             many=True
         ).data
 
@@ -86,6 +117,6 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
         })
 
 
-class SeasonViewSet(viewsets.ModelViewSet):
+class SeasonViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Season.objects.filter(deleted=False)
     serializer_class = SeasonSerializer

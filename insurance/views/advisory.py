@@ -1,6 +1,3 @@
-# ============================================
-# insurance/views/advisory.py
-# ============================================
 from datetime import datetime, timedelta
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -11,6 +8,7 @@ from django.db.models import Count, Avg, Max, Min
 
 from insurance.models import Advisory, WeatherData, Farmer
 from insurance.serializers import AdvisorySerializer, WeatherDataSerializer
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
 class AdvisoryViewSet(viewsets.ModelViewSet):
@@ -46,7 +44,7 @@ class AdvisoryViewSet(viewsets.ModelViewSet):
         sector = request.data.get('sector')
         gender = request.data.get('gender')
 
-        farmers = Farmer.objects.all()
+        farmers = scope_queryset(Farmer.objects.all(), request.user)
 
         if province:
             farmers = farmers.filter(farms__location_province=province)

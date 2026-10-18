@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 from .sync import SyncTrackedModel
@@ -5,6 +7,8 @@ from .sync import SyncTrackedModel
 
 class Farmer(SyncTrackedModel):
     farmer_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     country = models.ForeignKey('Country', on_delete=models.PROTECT, null=True, blank=True)
     first_name = models.CharField(max_length=100)
@@ -30,6 +34,8 @@ class Farmer(SyncTrackedModel):
 
 class Farm(SyncTrackedModel):
     farm_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     farmer = models.ForeignKey(Farmer, on_delete=models.PROTECT, related_name='farms')
     farm_name = models.CharField(max_length=200)
     farm_size = models.DecimalField(max_digits=10, decimal_places=2)

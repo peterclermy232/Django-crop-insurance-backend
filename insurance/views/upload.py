@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from insurance.public_ids import id_lookup
 from insurance.models import Claim, Farmer
 from insurance.models.inspection import ClaimPhoto, Inspection, InspectionPhoto
 
@@ -24,19 +25,6 @@ ENTITY_TYPES = {
 
 
 class MediaUploadView(APIView):
-    """
-    Upload a photo from the mobile app and attach it to a farmer (profile
-    photo), claim or inspection.
-
-    Multipart fields:
-    - file: JPEG/PNG image (max 10MB)
-    - entity_type: 'farmer' | 'claim' | 'inspection'
-    - entity_uuid: client_uuid of the record captured on the device, or
-      entity_id: its server id
-    - client_uuid: optional id of the photo itself; re-uploading the same
-      client_uuid returns the stored photo instead of saving it twice
-    - caption, latitude, longitude: optional
-    """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -94,7 +82,9 @@ class MediaUploadView(APIView):
         if entity_uuid:
             lookup = {'client_uuid': entity_uuid}
         elif entity_id:
-            lookup = {'pk': entity_id}
+            lookup = id_lookup(model, entity_id)
+            if lookup is None:
+                return None
         else:
             return None
         return model.objects.filter(**lookup, **{org_path: request.user.organisation_id}).first()

@@ -198,6 +198,12 @@ REST_FRAMEWORK = {
     'DATE_FORMAT': '%Y-%m-%d',
 }
 
+# Public record ids (see insurance/public_ids.py). Final rollout step, once the web
+# and mobile apps send X-Id-Format: uuid and every device has synced:
+#   PUBLIC_IDS_DEFAULT=uuid  ALLOW_NUMERIC_IDS=false
+PUBLIC_IDS_DEFAULT = os.environ.get('PUBLIC_IDS_DEFAULT', 'numeric').lower()
+ALLOW_NUMERIC_IDS = os.environ.get('ALLOW_NUMERIC_IDS', 'true').lower() == 'true'
+
 # JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),

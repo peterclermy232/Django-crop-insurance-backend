@@ -1,8 +1,12 @@
+import uuid
+
 from django.db import models
 
 
 class Subsidy(models.Model):
     subsidy_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     insurance_product = models.ForeignKey('InsuranceProduct', on_delete=models.PROTECT)
     subsidy_name = models.CharField(max_length=200)
@@ -19,6 +23,8 @@ class Subsidy(models.Model):
 
 class Invoice(models.Model):
     invoice_id = models.AutoField(primary_key=True)
+    # Random id shown in the API instead of the sequential primary key
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     organisation = models.ForeignKey('Organization', on_delete=models.PROTECT)
     subsidy = models.ForeignKey(Subsidy, on_delete=models.PROTECT)
     invoice_number = models.CharField(max_length=100, unique=True)

@@ -1,9 +1,10 @@
 from rest_framework import viewsets
 from insurance.models import InsuranceProduct
 from insurance.serializers import InsuranceProductSerializer
+from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_queryset
 
 
-class InsuranceProductViewSet(viewsets.ModelViewSet):
+class InsuranceProductViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = InsuranceProduct.objects.all().order_by('-product_id')
     serializer_class = InsuranceProductSerializer
 
