@@ -148,9 +148,9 @@ class BankAccountAdmin(admin.ModelAdmin):
 # ===== Insurance Models =====
 @admin.register(CoverType)
 class CoverTypeAdmin(admin.ModelAdmin):
-    list_display = ['cover_type_id', 'cover_type', 'deleted']
+    list_display = ['cover_type_id', 'cover_type', 'organisation', 'deleted']
     search_fields = ['cover_type']
-    list_filter = ['deleted']
+    list_filter = ['organisation', 'deleted']
 
 
 @admin.register(ProductCategory)

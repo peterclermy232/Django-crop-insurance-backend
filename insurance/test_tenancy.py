@@ -138,13 +138,51 @@ class TenancyTestCase(APITestCase):
         user = User.objects.get(user_email='y@x.com')
         self.assertEqual((user.organisation.organisation_code, user.user_role), ('DEFAULT', 'CUSTOMER'))
 
+    def test_cover_types_are_shared_or_owned_by_an_organisation(self):
+        self.client.force_authenticate(self.super)
+        r = self.client.post('/api/v1/cover_types/', {'cover_type': 'Area yield'}, format='json')
+        self.assertEqual(r.status_code, 201, r.json())
+        shared = CoverType.objects.get(pk=r.json()['cover_type_id'])
+        self.assertIsNone(shared.organisation_id)
+        other = CoverType.objects.create(cover_type='Weather index', organisation=self.org_b)
+
+        self.client.force_authenticate(self.admin_a)
+        r = self.client.post('/api/v1/cover_types/', {'cover_type': 'Multi peril', 'organisation': self.org_b.pk},
+                             format='json')
+        self.assertEqual(r.status_code, 400, r.json())
+        r = self.client.post('/api/v1/cover_types/', {'cover_type': 'Multi peril'}, format='json')
+        self.assertEqual(r.status_code, 201, r.json())
+        own = CoverType.objects.get(pk=r.json()['cover_type_id'])
+        self.assertEqual(own.organisation_id, self.org_a.pk)
+
+        names = {row['cover_type'] for row in self.ids('/api/v1/cover_types/', self.admin_a)}
+        self.assertIn('Area yield', names)
+        self.assertIn('Multi peril', names)
+        self.assertNotIn('Weather index', names)
+
+        self.client.force_authenticate(self.admin_a)
+        self.assertEqual(self.client.patch(f'/api/v1/cover_types/{shared.pk}/', {'cover_type': 'X'},
+                                           format='json').status_code, 403)
+        self.assertEqual(self.client.delete(f'/api/v1/cover_types/{shared.pk}/').status_code, 403)
+        self.assertEqual(self.client.get(f'/api/v1/cover_types/{other.pk}/').status_code, 404)
+        r = self.client.patch(f'/api/v1/cover_types/{own.pk}/', {'cover_type': 'MPCI', 'organisation': None},
+                              format='json')
+        self.assertEqual(r.status_code, 200, r.json())
+        own.refresh_from_db()
+        self.assertEqual((own.cover_type, own.organisation_id), ('MPCI', self.org_a.pk))
+
+        # Product categories can use shared and own cover types, not another organisation's
+        for cover, status in ((shared, 201), (own, 201), (other, 400)):
+            r = self.client.post('/api/v1/product_categories/', {'cover_type': cover.pk, 'product_category': 'Crop'},
+                                 format='json')
+            self.assertEqual(r.status_code, status, (cover.cover_type, r.json()))
+
     def test_shared_reference_data_is_read_only_for_organisations(self):
         ke = Country.objects.get(country_code='KE')
         unit = AdministrativeUnit.objects.create(country=ke, level='COUNTY', name='Nakuru')
         cases = [
             ('/api/v1/countries/', f'/api/v1/countries/{ke.pk}/', {'country': 'Kenya', 'country_code': 'KE'}),
             ('/api/v1/organisation_types/', None, {'organisation_type': 'Bank'}),
-            ('/api/v1/cover_types/', None, {'cover_type': 'Area yield'}),
             ('/api/v1/weather_data/', None, {'location': 'Nakuru', 'data_type': 'FORECAST', 'value': '1',
                                              'recorded_at': '2026-10-01T00:00:00Z'}),
             ('/api/v1/administrative_units/', f'/api/v1/administrative_units/{unit.pk}/',

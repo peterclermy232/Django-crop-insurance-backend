@@ -2,7 +2,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.permissions import BasePermission, IsAuthenticated
@@ -339,7 +339,8 @@ class SyncAPIView(APIView):
             'insurance_products': InsuranceProductSerializer(
                 InsuranceProduct.objects.filter(organisation=org, status='ACTIVE')
                 .select_related('crop', 'season', 'crop_variety', 'product_category'), many=True, **ctx).data,
-            'cover_types': CoverTypeSerializer(CoverType.objects.all(), many=True, **ctx).data,
+            'cover_types': CoverTypeSerializer(
+                CoverType.objects.filter(Q(organisation=org) | Q(organisation__isnull=True)), many=True, **ctx).data,
             'product_categories': ProductCategorySerializer(
                 ProductCategory.objects.filter(organisation=org), many=True, **ctx).data,
         }

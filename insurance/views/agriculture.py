@@ -1,5 +1,6 @@
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from insurance.models import (
@@ -11,7 +12,9 @@ from insurance.serializers import (
 )
 import django_filters
 from insurance.public_ids import filter_by_id
-from insurance.scoping import IsPlatformAdminOrReadOnly, OrganisationScopedMixin, is_platform_admin, scope_queryset
+from insurance.scoping import (
+    OrganisationScopedMixin, SharedRecordsReadOnly, is_platform_admin, scope_queryset,
+)
 
 
 class PublicIdFilter(django_filters.CharFilter):
@@ -88,10 +91,15 @@ class CropVarietyViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
         })
 
 
-class CoverTypeViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsPlatformAdminOrReadOnly]
+class CoverTypeViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
+    """Shared cover types (no organisation) plus the user's organisation's own."""
+    permission_classes = [IsAuthenticated, SharedRecordsReadOnly]
     queryset = CoverType.objects.filter(deleted=False)
     serializer_class = CoverTypeSerializer
+
+    def perform_update(self, serializer):
+        # Keeps an organisation from turning its cover type into a shared one
+        serializer.save(**self.organisation_save_kwargs())
 
 
 class ProductCategoryViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
@@ -103,7 +111,7 @@ class ProductCategoryViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
         """Return product categories with cover types and organizations"""
         categories = self.get_serializer(self.get_queryset(), many=True).data
         cover_types = CoverTypeSerializer(
-            CoverType.objects.filter(deleted=False),
+            scope_queryset(CoverType.objects.filter(deleted=False), request.user),
             many=True
         ).data
         orgs = OrganizationSerializer(

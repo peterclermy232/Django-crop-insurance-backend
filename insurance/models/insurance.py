@@ -5,6 +5,8 @@ from django.db import models
 
 class CoverType(models.Model):
     cover_type_id = models.AutoField(primary_key=True)
+    # Empty for shared cover types every organisation can use; set for an organisation's own
+    organisation = models.ForeignKey('Organization', on_delete=models.PROTECT, null=True, blank=True)
     cover_type = models.CharField(max_length=100)
     description = models.TextField(null=True, blank=True)
     status = models.BooleanField(default=True)

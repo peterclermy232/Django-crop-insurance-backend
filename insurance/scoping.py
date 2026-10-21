@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.relations import ManyRelatedField, RelatedField
 from rest_framework.serializers import ListSerializer
@@ -5,19 +6,20 @@ from rest_framework.serializers import ListSerializer
 from insurance.public_ids import PublicIdLookupMixin
 
 from insurance.models import (
-    Advisory, BankAccount, Claim, ClaimAssignment, Crop, CropVariety, Farm, Farmer, InsuranceProduct,
+    Advisory, BankAccount, Claim, ClaimAssignment, CoverType, Crop, CropVariety, Farm, Farmer, InsuranceProduct,
     Invoice, LossAssessor, NextOfKin, Organization, ProductCategory, Quotation,
     Season, Subsidy, User,
 )
 from insurance.models.inspection import ClaimPhoto, Inspection, InspectionPhoto
 
 # Model -> lookup from the model to the owning organisation's id.
-# Models not listed (countries, organisation types, cover types, locations, weather) are
+# Models not listed (countries, organisation types, locations, weather) are
 # platform-wide reference data: everyone reads them, only superusers change them.
 # Roles are handled in RoleTypeViewSet: system roles are shared, custom roles per organisation.
 ORG_PATHS = {
     Organization: 'organisation_id',
     Advisory: 'organisation_id',
+    CoverType: 'organisation_id',
     User: 'organisation_id',
     Crop: 'organisation_id',
     CropVariety: 'organisation_id',
@@ -39,6 +41,10 @@ ORG_PATHS = {
     InspectionPhoto: 'inspection__farm__farmer__organisation_id',
 }
 
+# Models whose records without an organisation are shared: every organisation sees them,
+# only superusers change them (see SharedRecordsReadOnly).
+SHARED_WHEN_UNOWNED = {CoverType}
+
 
 def is_platform_admin(user):
     return bool(user and user.is_authenticated
@@ -55,6 +61,14 @@ class IsPlatformAdminOrReadOnly(BasePermission):
         return is_platform_admin(request.user)
 
 
+class SharedRecordsReadOnly(BasePermission):
+    """Records without an organisation are shared by everyone, so only a superuser may change them."""
+    message = 'Only a superuser can change shared reference data.'
+
+    def has_object_permission(self, request, view, obj):
+        return request.method in SAFE_METHODS or obj.organisation_id is not None or is_platform_admin(request.user)
+
+
 def scope_queryset(queryset, user):
     """Restricts an organisation-owned queryset to the user's organisation."""
     path = ORG_PATHS.get(queryset.model)
@@ -62,7 +76,10 @@ def scope_queryset(queryset, user):
         return queryset
     if not (user and user.is_authenticated):
         return queryset.none()
-    return queryset.filter(**{path: user.organisation_id})
+    own = Q(**{path: user.organisation_id})
+    if queryset.model in SHARED_WHEN_UNOWNED:
+        own |= Q(**{path: None})
+    return queryset.filter(own)
 
 
 def restrict_relation_fields(serializer, user):
