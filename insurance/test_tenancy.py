@@ -155,10 +155,17 @@ class TenancyTestCase(APITestCase):
         own = CoverType.objects.get(pk=r.json()['cover_type_id'])
         self.assertEqual(own.organisation_id, self.org_a.pk)
 
-        names = {row['cover_type'] for row in self.ids('/api/v1/cover_types/', self.admin_a)}
+        rows = self.ids('/api/v1/cover_types/', self.admin_a)
+        names = {row['cover_type'] for row in rows}
         self.assertIn('Area yield', names)
         self.assertIn('Multi peril', names)
         self.assertNotIn('Weather index', names)
+
+        # Pages come from the API: ?page_size= limits the page, count is the total
+        body = self.client.get('/api/v1/cover_types/?page_size=1&page=2').json()
+        self.assertEqual((len(body['results']), body['count']), (1, len(rows)))
+        body = self.client.get('/api/v1/cover_types/?search=multi').json()
+        self.assertEqual([r['cover_type'] for r in body['results']], ['Multi peril'])
 
         self.client.force_authenticate(self.admin_a)
         self.assertEqual(self.client.patch(f'/api/v1/cover_types/{shared.pk}/', {'cover_type': 'X'},

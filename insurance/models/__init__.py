@@ -26,6 +26,9 @@ from .financial import Subsidy, Invoice
 # Advisory models
 from .advisory import Advisory, WeatherData
 
+# Uploaded files
+from .storage import StoredFile
+
 __all__ = [
     # Base
     'Country',
@@ -71,4 +74,7 @@ __all__ = [
     # Advisory
     'Advisory',
     'WeatherData',
+
+    # Uploaded files
+    'StoredFile',
 ]

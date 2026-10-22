@@ -9,7 +9,7 @@ from rest_framework.test import APITestCase
 
 from insurance.models import (
     Claim, Country, CoverType, Crop, Farm, Farmer, InsuranceProduct, Organization,
-    OrganizationType, ProductCategory, Quotation, Season, User,
+    OrganizationType, ProductCategory, Quotation, Season, StoredFile, User,
 )
 from insurance.models.inspection import ClaimPhoto, Inspection
 
@@ -251,6 +251,20 @@ class PhotoUploadTests(SyncTestCase):
 
         self.assertEqual(response.status_code, 201, response.data)
         self.assertTrue(Farmer.objects.get(client_uuid=ids['farmer']).photo)
+
+    def test_uploaded_photo_is_stored_in_database_and_served_by_signed_url(self):
+        ids, changes = self.field_visit()
+        self.sync({'farmers': changes['farmers']})
+        url = self.upload(entity_type='farmer', entity_uuid=ids['farmer']).data['file_url']
+
+        stored = StoredFile.objects.get()
+        self.assertEqual((bytes(stored.content), stored.content_type), (PNG, 'image/png'))
+        self.client.force_authenticate(None)
+        response = self.client.get(url)
+        self.assertEqual((response.status_code, response.content, response['Content-Type']),
+                         (200, PNG, 'image/png'))
+        self.assertEqual(self.client.get(url.replace('sig=', 'sig=x')).status_code, 404)
+        self.assertEqual(self.client.get(url.split('?')[0]).status_code, 404)
 
     def test_upload_before_record_synced_asks_to_retry(self):
         response = self.upload(entity_type='claim', entity_uuid=str(uuid.uuid4()))

@@ -94,8 +94,10 @@ class CropVarietyViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
 class CoverTypeViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     """Shared cover types (no organisation) plus the user's organisation's own."""
     permission_classes = [IsAuthenticated, SharedRecordsReadOnly]
-    queryset = CoverType.objects.filter(deleted=False)
+    queryset = CoverType.objects.filter(deleted=False).order_by('cover_type_id')
     serializer_class = CoverTypeSerializer
+    # Query params used by the frontend: ?page=, ?page_size=, ?search=
+    search_fields = ['cover_type', 'description']
 
     def perform_update(self, serializer):
         # Keeps an organisation from turning its cover type into a shared one

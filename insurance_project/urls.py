@@ -10,6 +10,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from insurance.views.notifications import NotificationViewSet, MessageViewSet
 from insurance.views.upload import MediaUploadView
+from insurance.views.files import StoredFileView
 from insurance.views.sync import SyncAPIView
 from insurance.views.location import AdministrativeUnitViewSet
 
@@ -156,6 +157,7 @@ urlpatterns = [
     path('api/v1/auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('api/v1/auth/token/refresh/', RefreshTokenView.as_view(), name='auth-token-refresh'),
      path('api/v1/upload/', MediaUploadView.as_view(), name='media-upload'),
+    path('api/v1/files/<path:name>', StoredFileView.as_view(), name='stored-file'),
 ]
 
 if settings.DEBUG:
