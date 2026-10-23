@@ -10,7 +10,7 @@ from insurance.models import (
     # Farmer
     Farmer, Farm, NextOfKin, BankAccount,
     # Insurance
-    InsuranceProduct, CoverType, ProductCategory,
+    InsuranceProduct, CoverType, ProductCategory, AreaYield,
     # Policy
     Quotation,
     # Claims
@@ -151,6 +151,14 @@ class CoverTypeAdmin(admin.ModelAdmin):
     list_display = ['cover_type_id', 'cover_type', 'organisation', 'deleted']
     search_fields = ['cover_type']
     list_filter = ['organisation', 'deleted']
+
+
+@admin.register(AreaYield)
+class AreaYieldAdmin(admin.ModelAdmin):
+    list_display = ['area_yield_id', 'crop', 'season', 'administrative_unit', 'expected_yield',
+                    'actual_yield', 'yield_unit', 'status', 'organisation']
+    list_filter = ['status', 'organisation']
+    search_fields = ['administrative_unit__name', 'crop__crop']
 
 
 @admin.register(ProductCategory)

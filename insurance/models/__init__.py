@@ -13,6 +13,7 @@ from .farmer import Farmer, Farm, NextOfKin, BankAccount
 
 # Insurance models
 from .insurance import InsuranceProduct, CoverType, ProductCategory
+from .area_yield import AreaYield
 
 # Policy models
 from .policy import Quotation
@@ -57,6 +58,7 @@ __all__ = [
     # Insurance
     'InsuranceProduct',
     'CoverType',
+    'AreaYield',
     'ProductCategory',
 
     # Policy

@@ -11,6 +11,7 @@ from django.conf.urls.static import static
 from insurance.views.notifications import NotificationViewSet, MessageViewSet
 from insurance.views.upload import MediaUploadView
 from insurance.views.files import StoredFileView
+from insurance.views.area_yield import AreaYieldViewSet
 from insurance.views.sync import SyncAPIView
 from insurance.views.location import AdministrativeUnitViewSet
 
@@ -97,6 +98,7 @@ def api_root(request):
                 '/api/v1/farmers/',
                 '/api/v1/farms/',
                 '/api/v1/insurance_products/',
+                '/api/v1/area_yields/',
                 '/api/v1/quotations/',
                 '/api/v1/loss_assessors/',
                 '/api/v1/claims/',
@@ -126,6 +128,7 @@ router.register(r'seasons', SeasonViewSet)
 router.register(r'farmers', FarmerViewSet)
 router.register(r'farms', FarmViewSet)
 router.register(r'insurance_products', InsuranceProductViewSet)
+router.register(r'area_yields', AreaYieldViewSet)
 router.register(r'quotations', QuotationViewSet)
 router.register(r'loss_assessors', LossAssessorViewSet)
 router.register(r'claims', ClaimViewSet)

@@ -5,7 +5,9 @@ from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_
 
 
 class InsuranceProductViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
-    queryset = InsuranceProduct.objects.all().order_by('-product_id')
+    queryset = InsuranceProduct.objects.select_related(
+        'organisation', 'product_category__cover_type', 'season', 'crop', 'crop_variety'
+    ).order_by('-product_id')
     serializer_class = InsuranceProductSerializer
 
     def get_queryset(self):

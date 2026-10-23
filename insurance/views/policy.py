@@ -17,7 +17,7 @@ from insurance.scoping import OrganisationScopedMixin, is_platform_admin, scope_
 
 class QuotationViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
     queryset = Quotation.objects.select_related(
-        'farmer', 'farm', 'insurance_product'
+        'farmer', 'farm', 'insurance_product__product_category__cover_type'
     ).all().order_by('-quotation_id')
     serializer_class = QuotationSerializer
 

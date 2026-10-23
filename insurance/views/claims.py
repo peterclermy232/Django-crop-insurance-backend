@@ -45,7 +45,9 @@ class LossAssessorViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
 
 
 class ClaimViewSet(OrganisationScopedMixin, viewsets.ModelViewSet):
-    queryset = Claim.objects.all().order_by('-claim_date')
+    queryset = Claim.objects.select_related(
+        'farmer', 'quotation__insurance_product__product_category__cover_type', 'loss_assessor__user'
+    ).order_by('-claim_date')
     serializer_class = ClaimSerializer
     permission_classes = [IsAuthenticated]
 

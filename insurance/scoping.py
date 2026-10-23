@@ -6,7 +6,7 @@ from rest_framework.serializers import ListSerializer
 from insurance.public_ids import PublicIdLookupMixin
 
 from insurance.models import (
-    Advisory, BankAccount, Claim, ClaimAssignment, CoverType, Crop, CropVariety, Farm, Farmer, InsuranceProduct,
+    Advisory, AreaYield, BankAccount, Claim, ClaimAssignment, CoverType, Crop, CropVariety, Farm, Farmer, InsuranceProduct,
     Invoice, LossAssessor, NextOfKin, Organization, ProductCategory, Quotation,
     Season, Subsidy, User,
 )
@@ -19,6 +19,7 @@ from insurance.models.inspection import ClaimPhoto, Inspection, InspectionPhoto
 ORG_PATHS = {
     Organization: 'organisation_id',
     Advisory: 'organisation_id',
+    AreaYield: 'organisation_id',
     CoverType: 'organisation_id',
     User: 'organisation_id',
     Crop: 'organisation_id',

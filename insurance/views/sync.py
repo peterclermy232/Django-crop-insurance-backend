@@ -338,7 +338,8 @@ class SyncAPIView(APIView):
             'seasons': SeasonSerializer(Season.objects.filter(organisation=org), many=True, **ctx).data,
             'insurance_products': InsuranceProductSerializer(
                 InsuranceProduct.objects.filter(organisation=org, status='ACTIVE')
-                .select_related('crop', 'season', 'crop_variety', 'product_category'), many=True, **ctx).data,
+                .select_related('organisation', 'crop', 'season', 'crop_variety', 'product_category__cover_type'),
+                many=True, **ctx).data,
             'cover_types': CoverTypeSerializer(
                 CoverType.objects.filter(Q(organisation=org) | Q(organisation__isnull=True)), many=True, **ctx).data,
             'product_categories': ProductCategorySerializer(

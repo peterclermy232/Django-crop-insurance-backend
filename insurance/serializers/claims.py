@@ -8,6 +8,22 @@ from insurance.models import Claim, ClaimAssignment, LossAssessor, Farmer, Quota
 logger = logging.getLogger(__name__)
 
 
+def next_claim_number():
+    """CLM-<date>-<n>, numbering from 1 each day."""
+    date_str = timezone.now().strftime('%Y%m%d')
+    last_claim = Claim.objects.filter(
+        claim_number__startswith=f'CLM-{date_str}'
+    ).order_by('-claim_id').first()
+
+    new_num = 1
+    if last_claim:
+        try:
+            new_num = int(last_claim.claim_number.split('-')[-1]) + 1
+        except (ValueError, IndexError):
+            new_num = 1
+    return f'CLM-{date_str}-{new_num:06d}'
+
+
 class LossAssessorSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.user_name', read_only=True)
     organisation_name = serializers.CharField(
@@ -28,6 +44,11 @@ class ClaimSerializer(serializers.ModelSerializer):
     )
     assessor_name = serializers.SerializerMethodField()
     loss_details = serializers.JSONField(required=False, allow_null=True)
+    # AREA_YIELD claims are created from area yields and skip loss assessment
+    calculation_method = serializers.CharField(
+        source='quotation.insurance_product.product_category.cover_type.calculation_method',
+        read_only=True
+    )
 
     class Meta:
         model = Claim
@@ -111,6 +132,12 @@ class ClaimSerializer(serializers.ModelSerializer):
         estimated_loss = data.get('estimated_loss_amount')
         quotation = data.get('quotation')
 
+        if quotation and self.instance is None and quotation.insurance_product.is_area_yield:
+            raise serializers.ValidationError({
+                'quotation': 'This is an area yield policy. Claims are created automatically '
+                             'when the area\'s yield is approved, so it cannot be claimed individually.'
+            })
+
         # If both are provided, validate loss doesn't exceed sum insured
         if estimated_loss and quotation:
             if estimated_loss > quotation.sum_insured:
@@ -135,21 +162,7 @@ class ClaimSerializer(serializers.ModelSerializer):
         """Override create to auto-generate claim number if not provided"""
         try:
             if not validated_data.get('claim_number'):
-                date_str = timezone.now().strftime('%Y%m%d')
-                last_claim = Claim.objects.filter(
-                    claim_number__startswith=f'CLM-{date_str}'
-                ).order_by('-claim_id').first()
-
-                if last_claim:
-                    try:
-                        last_num = int(last_claim.claim_number.split('-')[-1])
-                        new_num = last_num + 1
-                    except (ValueError, IndexError):
-                        new_num = 1
-                else:
-                    new_num = 1
-
-                validated_data['claim_number'] = f'CLM-{date_str}-{new_num:06d}'
+                validated_data['claim_number'] = next_claim_number()
 
             # Ensure loss_details is a dict
             if 'loss_details' not in validated_data or validated_data['loss_details'] is None:
